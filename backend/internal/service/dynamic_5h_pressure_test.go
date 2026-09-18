@@ -4,14 +4,105 @@ package service
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
+
+type dynamic5hMemoryCache struct {
+	status    Dynamic5hPressureStatus
+	found     bool
+	lockToken string
+	active    map[int64]time.Time
+	meter     map[int64]float64
+	userMeter map[int64]map[int64]float64
+}
+
+func newDynamic5hMemoryCache() *dynamic5hMemoryCache {
+	return &dynamic5hMemoryCache{
+		active: make(map[int64]time.Time), meter: make(map[int64]float64),
+		userMeter: make(map[int64]map[int64]float64),
+	}
+}
+
+func (c *dynamic5hMemoryCache) LoadStatus(context.Context) (Dynamic5hPressureStatus, bool, error) {
+	return c.status, c.found, nil
+}
+
+func (c *dynamic5hMemoryCache) StoreStatus(_ context.Context, status Dynamic5hPressureStatus) error {
+	c.status, c.found = status, true
+	return nil
+}
+
+func (c *dynamic5hMemoryCache) AcquireRefreshLock(_ context.Context, token string, _ time.Duration) (bool, error) {
+	if c.lockToken != "" {
+		return false, nil
+	}
+	c.lockToken = token
+	return true, nil
+}
+
+func (c *dynamic5hMemoryCache) ReleaseRefreshLock(_ context.Context, token string) error {
+	if c.lockToken == token {
+		c.lockToken = ""
+	}
+	return nil
+}
+
+func (c *dynamic5hMemoryCache) TouchActiveUser(_ context.Context, userID int64, now, cutoff time.Time) error {
+	c.active[userID] = now
+	for id, seen := range c.active {
+		if !seen.After(cutoff) {
+			delete(c.active, id)
+		}
+	}
+	return nil
+}
+
+func (c *dynamic5hMemoryCache) ActiveUserIDs(_ context.Context, cutoff time.Time) ([]string, error) {
+	ids := make([]string, 0, len(c.active))
+	for id, seen := range c.active {
+		if seen.After(cutoff) {
+			ids = append(ids, strconv.FormatInt(id, 10))
+		}
+	}
+	return ids, nil
+}
+
+func (c *dynamic5hMemoryCache) RecordUsage(
+	ctx context.Context,
+	userID, bucket int64,
+	now, cutoff time.Time,
+	amount float64,
+	_ time.Duration,
+) error {
+	_ = c.TouchActiveUser(ctx, userID, now, cutoff)
+	c.meter[bucket] += amount
+	if c.userMeter[userID] == nil {
+		c.userMeter[userID] = make(map[int64]float64)
+	}
+	c.userMeter[userID][bucket] += amount
+	return nil
+}
+
+func (c *dynamic5hMemoryCache) MeterValues(_ context.Context, latestBucket int64, count int) ([]float64, error) {
+	return dynamic5hMemoryValues(c.meter, latestBucket, count), nil
+}
+
+func (c *dynamic5hMemoryCache) UserMeterValues(_ context.Context, userID, latestBucket int64, count int) ([]float64, error) {
+	return dynamic5hMemoryValues(c.userMeter[userID], latestBucket, count), nil
+}
+
+func dynamic5hMemoryValues(source map[int64]float64, latestBucket int64, count int) []float64 {
+	values := make([]float64, count)
+	for i := range values {
+		values[i] = source[latestBucket-int64(count-1-i)]
+	}
+	return values
+}
 
 func dynamic5hTestConfig() config.Dynamic5hPressureConfig {
 	return config.Dynamic5hPressureConfig{Enabled: true, PeakThreshold: 0.8, NormalThreshold: 0.7, EWMAAlpha: 1}
@@ -19,9 +110,7 @@ func dynamic5hTestConfig() config.Dynamic5hPressureConfig {
 
 func newDynamic5hTestService(t *testing.T, now time.Time) (*Dynamic5hPressureService, context.Context) {
 	t.Helper()
-	mr := miniredis.RunT(t)
-	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	svc := NewDynamic5hPressureService(nil, rdb, &config.Config{Gateway: config.GatewayConfig{Dynamic5hPressure: dynamic5hTestConfig()}})
+	svc := NewDynamic5hPressureService(nil, newDynamic5hMemoryCache(), &config.Config{Gateway: config.GatewayConfig{Dynamic5hPressure: dynamic5hTestConfig()}})
 	svc.now = func() time.Time { return now }
 	return svc, context.Background()
 }

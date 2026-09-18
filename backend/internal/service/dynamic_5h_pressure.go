@@ -2,18 +2,15 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/redis/go-redis/v9"
 )
 
 type Dynamic5hPressureState string
@@ -22,14 +19,9 @@ const (
 	Dynamic5hPressureNormal Dynamic5hPressureState = "normal"
 	Dynamic5hPressurePeak   Dynamic5hPressureState = "peak"
 
-	dynamic5hStatusKey       = "dynamic_5h_pressure:status"
-	dynamic5hRefreshLockKey  = "dynamic_5h_pressure:refresh_lock"
-	dynamic5hActiveUsersKey  = "dynamic_5h_pressure:active_users"
-	dynamic5hMeterBucketBase = "dynamic_5h_pressure:meter:"
-	dynamic5hUserMeterBase   = "dynamic_5h_pressure:user_meter:"
-	dynamic5hWindow          = 5 * time.Hour
-	dynamic5hMeterBucket     = 5 * time.Minute
-	dynamic5hRedisTTL        = 6 * time.Hour
+	dynamic5hWindow      = 5 * time.Hour
+	dynamic5hMeterBucket = 5 * time.Minute
+	dynamic5hRedisTTL    = 6 * time.Hour
 )
 
 var ErrDynamic5hPressureLimitExceeded = infraerrors.TooManyRequests(
@@ -76,9 +68,23 @@ type dynamic5hAccountWindow struct {
 	resetAt time.Time
 }
 
+// Dynamic5hPressureCache keeps cache technology and key layout outside the
+// service layer. Cache errors always result in fail-open enforcement.
+type Dynamic5hPressureCache interface {
+	LoadStatus(ctx context.Context) (Dynamic5hPressureStatus, bool, error)
+	StoreStatus(ctx context.Context, status Dynamic5hPressureStatus) error
+	AcquireRefreshLock(ctx context.Context, token string, ttl time.Duration) (bool, error)
+	ReleaseRefreshLock(ctx context.Context, token string) error
+	TouchActiveUser(ctx context.Context, userID int64, now, cutoff time.Time) error
+	ActiveUserIDs(ctx context.Context, cutoff time.Time) ([]string, error)
+	RecordUsage(ctx context.Context, userID, bucket int64, now, cutoff time.Time, amount float64, ttl time.Duration) error
+	MeterValues(ctx context.Context, latestBucket int64, count int) ([]float64, error)
+	UserMeterValues(ctx context.Context, userID, latestBucket int64, count int) ([]float64, error)
+}
+
 type Dynamic5hPressureService struct {
 	accountRepo AccountRepository
-	rdb         *redis.Client
+	cache       Dynamic5hPressureCache
 	cfg         config.Dynamic5hPressureConfig
 
 	mu          sync.RWMutex
@@ -88,13 +94,13 @@ type Dynamic5hPressureService struct {
 	now         func() time.Time
 }
 
-func NewDynamic5hPressureService(accountRepo AccountRepository, rdb *redis.Client, cfg *config.Config) *Dynamic5hPressureService {
+func NewDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hPressureCache, cfg *config.Config) *Dynamic5hPressureService {
 	pressureCfg := config.Dynamic5hPressureConfig{}
 	if cfg != nil {
 		pressureCfg = cfg.Gateway.Dynamic5hPressure
 	}
 	pressureCfg = normalizeDynamic5hPressureConfig(pressureCfg)
-	s := &Dynamic5hPressureService{accountRepo: accountRepo, rdb: rdb, cfg: pressureCfg, now: time.Now}
+	s := &Dynamic5hPressureService{accountRepo: accountRepo, cache: cache, cfg: pressureCfg, now: time.Now}
 	s.status = Dynamic5hPressureStatus{Enabled: pressureCfg.Enabled, State: Dynamic5hPressureNormal}
 	return s
 }
@@ -335,7 +341,7 @@ func (s *Dynamic5hPressureService) AdminStatus(ctx context.Context, refresh bool
 func (s *Dynamic5hPressureService) UserStatus(ctx context.Context, userID int64) Dynamic5hUserStatus {
 	status := s.AdminStatus(ctx, false)
 	result := Dynamic5hUserStatus{Enabled: status.Enabled, State: status.State}
-	if !status.CalibrationReady || userID <= 0 || s.rdb == nil {
+	if !status.CalibrationReady || userID <= 0 || s.cache == nil {
 		return result
 	}
 	now := s.now().UTC()
@@ -361,7 +367,7 @@ func (s *Dynamic5hPressureService) CheckUser(ctx context.Context, userID int64, 
 		return nil
 	}
 	status := s.AdminStatus(ctx, false)
-	if status.State != Dynamic5hPressurePeak || !status.CalibrationReady || userID <= 0 || s.rdb == nil {
+	if status.State != Dynamic5hPressurePeak || !status.CalibrationReady || userID <= 0 || s.cache == nil {
 		return nil
 	}
 	now := s.now().UTC()
@@ -384,21 +390,12 @@ func (s *Dynamic5hPressureService) CheckUser(ctx context.Context, userID int64, 
 // RecordUsage maintains calibration, active population, and each user's rolling
 // usage in every state. Normal usage must remain visible if the pool enters Peak.
 func (s *Dynamic5hPressureService) RecordUsage(ctx context.Context, userID int64, platform string, meterUnits float64) {
-	if s == nil || s.rdb == nil || userID <= 0 || meterUnits <= 0 || !dynamic5hPlatformSupported(platform) {
+	if s == nil || s.cache == nil || userID <= 0 || meterUnits <= 0 || !dynamic5hPlatformSupported(platform) {
 		return
 	}
 	now := s.now().UTC()
 	bucket := now.Unix() / int64(dynamic5hMeterBucket/time.Second)
-	pipe := s.rdb.TxPipeline()
-	pipe.ZAdd(ctx, dynamic5hActiveUsersKey, redis.Z{Score: float64(now.Unix()), Member: strconv.FormatInt(userID, 10)})
-	pipe.ZRemRangeByScore(ctx, dynamic5hActiveUsersKey, "-inf", strconv.FormatInt(now.Add(-dynamic5hWindow).Unix(), 10))
-	key := fmt.Sprintf("%s%d", dynamic5hMeterBucketBase, bucket)
-	pipe.IncrByFloat(ctx, key, meterUnits)
-	pipe.Expire(ctx, key, dynamic5hRedisTTL)
-	userKey := dynamic5hUserMeterKey(userID, bucket)
-	pipe.IncrByFloat(ctx, userKey, meterUnits)
-	pipe.Expire(ctx, userKey, dynamic5hRedisTTL)
-	if _, err := pipe.Exec(ctx); err != nil {
+	if err := s.cache.RecordUsage(ctx, userID, bucket, now, now.Add(-dynamic5hWindow), meterUnits, dynamic5hRedisTTL); err != nil {
 		slog.Warn("dynamic 5h pressure calibration update failed; failing open", "error", err)
 		return
 	}
@@ -414,19 +411,16 @@ func dynamic5hPlatformSupported(platform string) bool {
 }
 
 func (s *Dynamic5hPressureService) touchActiveUser(ctx context.Context, userID int64, now time.Time) {
-	pipe := s.rdb.TxPipeline()
-	pipe.ZAdd(ctx, dynamic5hActiveUsersKey, redis.Z{Score: float64(now.Unix()), Member: strconv.FormatInt(userID, 10)})
-	pipe.ZRemRangeByScore(ctx, dynamic5hActiveUsersKey, "-inf", strconv.FormatInt(now.Add(-dynamic5hWindow).Unix(), 10))
-	_, _ = pipe.Exec(ctx)
+	if s.cache != nil {
+		_ = s.cache.TouchActiveUser(ctx, userID, now, now.Add(-dynamic5hWindow))
+	}
 }
 
 func (s *Dynamic5hPressureService) activeUserIDs(ctx context.Context, now time.Time) []string {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return nil
 	}
-	ids, err := s.rdb.ZRangeByScore(ctx, dynamic5hActiveUsersKey, &redis.ZRangeBy{
-		Min: strconv.FormatInt(now.Add(-dynamic5hWindow).Unix(), 10), Max: "+inf",
-	}).Result()
+	ids, err := s.cache.ActiveUserIDs(ctx, now.Add(-dynamic5hWindow))
 	if err != nil {
 		return nil
 	}
@@ -434,34 +428,26 @@ func (s *Dynamic5hPressureService) activeUserIDs(ctx context.Context, now time.T
 }
 
 func (s *Dynamic5hPressureService) recentMeterRate(ctx context.Context, now time.Time) float64 {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return 0
 	}
 	bucketSeconds := int64(dynamic5hMeterBucket / time.Second)
 	latest := now.Unix() / bucketSeconds
 	count := int(dynamic5hWindow/dynamic5hMeterBucket) + 1
-	keys := make([]string, 0, count)
-	for i := count - 1; i >= 0; i-- {
-		keys = append(keys, fmt.Sprintf("%s%d", dynamic5hMeterBucketBase, latest-int64(i)))
-	}
-	values, err := s.rdb.MGet(ctx, keys...).Result()
+	values, err := s.cache.MeterValues(ctx, latest, count)
 	if err != nil {
 		return 0
 	}
 	var total float64
 	first := -1
 	for i, value := range values {
-		if value == nil {
-			continue
-		}
-		v, err := strconv.ParseFloat(fmt.Sprint(value), 64)
-		if err != nil || v <= 0 {
+		if value <= 0 {
 			continue
 		}
 		if first < 0 {
 			first = i
 		}
-		total += v
+		total += value
 	}
 	if first < 0 || total <= 0 {
 		return 0
@@ -477,12 +463,8 @@ func (s *Dynamic5hPressureService) recentMeterRate(ctx context.Context, now time
 	return total / observed.Hours()
 }
 
-func dynamic5hUserMeterKey(userID, bucket int64) string {
-	return fmt.Sprintf("%s%d:%d", dynamic5hUserMeterBase, userID, bucket)
-}
-
 func (s *Dynamic5hPressureService) currentFairShare(ctx context.Context, status Dynamic5hPressureStatus, now time.Time) (float64, bool) {
-	if s.rdb == nil || !status.CalibrationReady || status.PoolCapacity <= 0 {
+	if s.cache == nil || !status.CalibrationReady || status.PoolCapacity <= 0 {
 		return 0, false
 	}
 	users := s.activeUserIDs(ctx, now)
@@ -499,22 +481,15 @@ func (s *Dynamic5hPressureService) rollingUserUsage(ctx context.Context, userID 
 	bucketSeconds := int64(dynamic5hMeterBucket / time.Second)
 	latest := now.Unix() / bucketSeconds
 	count := int(dynamic5hWindow/dynamic5hMeterBucket) + 1
-	keys := make([]string, 0, count)
-	for i := count - 1; i >= 0; i-- {
-		keys = append(keys, dynamic5hUserMeterKey(userID, latest-int64(i)))
-	}
-	values, err := s.rdb.MGet(ctx, keys...).Result()
+	values, err := s.cache.UserMeterValues(ctx, userID, latest, count)
 	if err != nil {
 		return 0, time.Time{}
 	}
 	amounts := make([]float64, len(values))
 	var total float64
 	for i, value := range values {
-		if value == nil {
-			continue
-		}
-		amounts[i], _ = strconv.ParseFloat(fmt.Sprint(value), 64)
-		total += math.Max(0, amounts[i])
+		amounts[i] = math.Max(0, value)
+		total += amounts[i]
 	}
 	remaining := total
 	for i, amount := range amounts {
@@ -538,15 +513,12 @@ func (s *Dynamic5hPressureService) cachedStatus() Dynamic5hPressureStatus {
 }
 
 func (s *Dynamic5hPressureService) loadStatus(ctx context.Context) Dynamic5hPressureStatus {
-	if s.rdb != nil {
-		if raw, err := s.rdb.Get(ctx, dynamic5hStatusKey).Bytes(); err == nil {
-			var status Dynamic5hPressureStatus
-			if json.Unmarshal(raw, &status) == nil {
-				s.mu.Lock()
-				s.status = status
-				s.mu.Unlock()
-				return status
-			}
+	if s.cache != nil {
+		if status, found, err := s.cache.LoadStatus(ctx); err == nil && found {
+			s.mu.Lock()
+			s.status = status
+			s.mu.Unlock()
+			return status
 		}
 	}
 	return s.cachedStatus()
@@ -556,34 +528,25 @@ func (s *Dynamic5hPressureService) storeStatus(ctx context.Context, status Dynam
 	s.mu.Lock()
 	s.status = status
 	s.mu.Unlock()
-	if s.rdb != nil {
-		if raw, err := json.Marshal(status); err == nil {
-			if err := s.rdb.Set(ctx, dynamic5hStatusKey, raw, 0).Err(); err != nil {
-				slog.Warn("dynamic 5h pressure status persistence failed", "error", err)
-			}
+	if s.cache != nil {
+		if err := s.cache.StoreStatus(ctx, status); err != nil {
+			slog.Warn("dynamic 5h pressure status persistence failed", "error", err)
 		}
 	}
 }
 
 func (s *Dynamic5hPressureService) acquireRefreshLock(ctx context.Context) (string, bool) {
-	if s.rdb == nil {
+	if s.cache == nil {
 		return "", true
 	}
 	token := fmt.Sprintf("%d", s.now().UnixNano())
-	ok, err := s.rdb.SetNX(ctx, dynamic5hRefreshLockKey, token, 15*time.Second).Result()
+	ok, err := s.cache.AcquireRefreshLock(ctx, token, 15*time.Second)
 	return token, err == nil && ok
 }
 
 func (s *Dynamic5hPressureService) releaseRefreshLock(ctx context.Context, token string) {
-	if s.rdb == nil || token == "" {
+	if s.cache == nil || token == "" {
 		return
 	}
-	_, _ = releaseDynamic5hRefreshLockScript.Run(ctx, s.rdb, []string{dynamic5hRefreshLockKey}, token).Result()
+	_ = s.cache.ReleaseRefreshLock(ctx, token)
 }
-
-var releaseDynamic5hRefreshLockScript = redis.NewScript(`
-if redis.call('GET', KEYS[1]) == ARGV[1] then
-  return redis.call('DEL', KEYS[1])
-end
-return 0
-`)
