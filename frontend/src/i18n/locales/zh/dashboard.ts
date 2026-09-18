@@ -56,7 +56,14 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    pressure5h: {
+      peak: '目前为 Peak 状态，动态公平份额保护已生效。',
+      limited: '你的 rolling 5h 使用量已超过目前的公平份额。',
+      usage: '5h Usage：{value}%',
+      remaining: 'Remaining：{value}%',
+      recover: 'Recover：{time}'
+    }
   },
 
   // Groups (shared)

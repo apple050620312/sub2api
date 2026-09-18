@@ -1908,6 +1908,34 @@ export interface DashboardStats {
   tpm: number // 近5分钟平均每分钟Token数
 }
 
+export interface Dynamic5hPressureStatus {
+  enabled: boolean
+  data_available: boolean
+  calibration_ready: boolean
+  pressure: number
+  raw_pressure: number
+  state: 'normal' | 'peak'
+  peak_active: boolean
+  account_count: number
+  active_user_count: number
+  remaining_capacity: number
+  burn_rate_per_hour: number
+  projected_demand: number
+  pool_capacity: number
+  evaluated_at: string
+}
+
+export interface Dynamic5hUserStatus {
+  enabled: boolean
+  state: 'normal' | 'peak'
+  limit_active: boolean
+  currently_limited: boolean
+  usage_percent: number
+  remaining_percent: number
+  window_started_at?: string
+  recover_at?: string
+}
+
 export interface UsageStatsResponse {
   period?: string
   total_requests: number

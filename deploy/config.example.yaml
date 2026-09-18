@@ -209,6 +209,20 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Dynamic pool-wide 5-hour pressure protection. The signal is calculated
+  # from each account's current 5h usage and its own reset time; no fixed peak
+  # hours are used. During Peak, each user's rolling 5h fair share is derived
+  # continuously from effective schedulable pool capacity and the active-user
+  # population. Unused capacity remains borrowable while the state is Normal.
+  # 动态全局 5 小时压力保护：根据每个账号当前用量及各自 reset 时间计算，
+  # 不使用固定高峰时段。Peak 期间，每位用户的 rolling 5h 额度会依当前池容量与
+  # 活跃用户数动态决定。Normal 时可借用闲置容量；回到 Normal 后自动解除限制。
+  dynamic_5h_pressure:
+    enabled: true
+    refresh_interval_seconds: 30
+    peak_threshold: 0.8
+    normal_threshold: 0.7
+    ewma_alpha: 0.35
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600

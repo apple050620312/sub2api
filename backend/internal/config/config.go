@@ -1016,6 +1016,9 @@ type GatewayConfig struct {
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// Dynamic5hPressure protects the shared upstream five-hour quota pool with
+	// dynamic equal-share rolling windows only while projected demand exceeds supply.
+	Dynamic5hPressure Dynamic5hPressureConfig `mapstructure:"dynamic_5h_pressure"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -1099,6 +1102,16 @@ type GatewayConfig struct {
 	// CNProviders: 国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）的余额检测配置。
 	// 仅作用于 payg（按量付费）账号：周期探测余额，低于阈值则临时停调。
 	CNProviders GatewayCNProvidersConfig `mapstructure:"cn_providers"`
+}
+
+// Dynamic5hPressureConfig controls the pool-wide five-hour pressure guard.
+// It intentionally has no fixed per-user money or token allowance setting.
+type Dynamic5hPressureConfig struct {
+	Enabled                bool    `mapstructure:"enabled"`
+	RefreshIntervalSeconds int     `mapstructure:"refresh_interval_seconds"`
+	PeakThreshold          float64 `mapstructure:"peak_threshold"`
+	NormalThreshold        float64 `mapstructure:"normal_threshold"`
+	EWMAAlpha              float64 `mapstructure:"ewma_alpha"`
 }
 
 // GatewayGrokConfig holds Grok-specific gateway scheduling knobs.
@@ -2467,6 +2480,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_concurrency.overflow_mode", ImageConcurrencyOverflowModeReject)
 	viper.SetDefault("gateway.image_concurrency.wait_timeout_seconds", 30)
 	viper.SetDefault("gateway.image_concurrency.max_waiting_requests", 100)
+	viper.SetDefault("gateway.dynamic_5h_pressure.enabled", true)
+	viper.SetDefault("gateway.dynamic_5h_pressure.refresh_interval_seconds", 30)
+	viper.SetDefault("gateway.dynamic_5h_pressure.peak_threshold", 0.8)
+	viper.SetDefault("gateway.dynamic_5h_pressure.normal_threshold", 0.7)
+	viper.SetDefault("gateway.dynamic_5h_pressure.ewma_alpha", 0.35)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))

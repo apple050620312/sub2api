@@ -19,6 +19,7 @@ import (
 type DashboardHandler struct {
 	dashboardService   *service.DashboardService
 	aggregationService *service.DashboardAggregationService
+	dynamic5hPressure  *service.Dynamic5hPressureService
 	startTime          time.Time // Server start time for uptime calculation
 }
 
@@ -29,6 +30,19 @@ func NewDashboardHandler(dashboardService *service.DashboardService, aggregation
 		aggregationService: aggregationService,
 		startTime:          time.Now(),
 	}
+}
+
+func (h *DashboardHandler) SetDynamic5hPressureService(pressure *service.Dynamic5hPressureService) {
+	h.dynamic5hPressure = pressure
+}
+
+// GetDynamic5hPressure returns a fresh pool-wide pressure snapshot for admins.
+func (h *DashboardHandler) GetDynamic5hPressure(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.Success(c, service.Dynamic5hPressureStatus{State: service.Dynamic5hPressureNormal})
+		return
+	}
+	response.Success(c, h.dynamic5hPressure.AdminStatus(c.Request.Context(), true))
 }
 
 // parseTimeRange parses start_date, end_date query parameters

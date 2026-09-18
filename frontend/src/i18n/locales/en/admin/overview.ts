@@ -77,7 +77,16 @@ export default {
       groupPricingDesc: 'Configure batch discount and hold ratio',
       systemSettings: 'System Settings',
       configureSystem: 'Configure system settings',
-      failedToLoad: 'Failed to load dashboard statistics'
+      failedToLoad: 'Failed to load dashboard statistics',
+      pressure5h: {
+        title: 'Global 5h Pressure',
+        accounts: 'Accounts',
+        remaining: 'Remaining capacity',
+        activeUsers: 'Active users (5h)',
+        peak: 'Peak state',
+        enforcement: 'Fair-share limit',
+        states: { normal: 'Normal', peak: 'Peak' }
+      }
     },
 
     backup: {

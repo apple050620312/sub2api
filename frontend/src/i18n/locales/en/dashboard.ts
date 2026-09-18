@@ -56,7 +56,14 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    pressure5h: {
+      peak: 'Peak demand is active. Dynamic fair-share protection is now in effect.',
+      limited: 'Your rolling 5h usage is above the current fair share.',
+      usage: '5h Usage: {value}%',
+      remaining: 'Remaining: {value}%',
+      recover: 'Recover: {time}'
+    }
   },
 
   // Groups (shared)

@@ -7,6 +7,24 @@
       </div>
 
       <template v-else-if="stats">
+        <div v-if="pressure" class="card p-4" data-testid="dynamic-5h-pressure">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('admin.dashboard.pressure5h.title') }}</p>
+              <div class="mt-1 flex items-baseline gap-2">
+                <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ pressure.pressure.toFixed(2) }}</span>
+                <span :class="pressureStateClass" class="rounded-full px-2 py-0.5 text-xs font-semibold">{{ pressureStateLabel }}</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-5">
+              <span>{{ t('admin.dashboard.pressure5h.accounts') }}: {{ pressure.account_count }}</span>
+              <span>{{ t('admin.dashboard.pressure5h.remaining') }}: {{ pressure.remaining_capacity.toFixed(2) }}</span>
+              <span>{{ t('admin.dashboard.pressure5h.activeUsers') }}: {{ pressure.active_user_count }}</span>
+              <span>{{ t('admin.dashboard.pressure5h.peak') }}: {{ pressure.peak_active ? t('common.yes') : t('common.no') }}</span>
+              <span>{{ t('admin.dashboard.pressure5h.enforcement') }}: {{ pressure.peak_active && pressure.calibration_ready ? t('common.yes') : t('common.no') }}</span>
+            </div>
+          </div>
+        </div>
         <!-- Row 1: Core Stats -->
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <!-- Total API Keys -->
@@ -341,7 +359,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
@@ -353,7 +371,8 @@ import type {
   TrendDataPoint,
   ModelStat,
   UserUsageTrendPoint,
-  UserSpendingRankingItem
+  UserSpendingRankingItem,
+  Dynamic5hPressureStatus
 } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
@@ -391,6 +410,7 @@ const appStore = useAppStore()
 const router = useRouter()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 const stats = ref<DashboardStats | null>(null)
+const pressure = ref<Dynamic5hPressureStatus | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
 const userTrendLoading = ref(false)
@@ -409,6 +429,16 @@ let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
+let pressureTimer: ReturnType<typeof setInterval> | null = null
+
+const pressureStateLabel = computed(() => {
+  if (!pressure.value) return ''
+  return t(`admin.dashboard.pressure5h.states.${pressure.value.state}`)
+})
+const pressureStateClass = computed(() => {
+  if (pressure.value?.state === 'peak') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+})
 
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {
@@ -740,6 +770,11 @@ const loadDashboardStats = async () => {
   ])
 }
 
+const loadPressure = async () => {
+  try { pressure.value = await adminAPI.dashboard.getDynamic5hPressure() }
+  catch (error) { console.warn('Failed to load dynamic 5h pressure:', error) }
+}
+
 const loadChartData = async () => {
   await Promise.all([
     loadDashboardSnapshot(false),
@@ -751,7 +786,10 @@ const loadChartData = async () => {
 onMounted(() => {
   void refreshBatchImageAccess()
   loadDashboardStats()
+  void loadPressure()
+  pressureTimer = setInterval(() => void loadPressure(), 30000)
 })
+onBeforeUnmount(() => { if (pressureTimer) clearInterval(pressureTimer) })
 </script>
 
 <style scoped>

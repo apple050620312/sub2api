@@ -73,6 +73,7 @@ type usageLogBestEffortWriter interface {
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
 	Cost                  *CostBreakdown
+	MeterUnits            float64
 	User                  *User
 	APIKey                *APIKey
 	Account               *Account
@@ -168,6 +169,9 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		if err := p.APIKeyService.UpdateRateLimitUsage(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
 		}
+	}
+	if p.MeterUnits > 0 && p.User != nil && p.Account != nil && deps.billingCacheService != nil {
+		deps.billingCacheService.RecordDynamic5hPressureUsage(billingCtx, p.User.ID, p.Account.Platform, p.MeterUnits)
 	}
 
 	if p.shouldUpdateAccountQuota() {
@@ -335,6 +339,9 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	if p == nil || deps == nil {
 		return false, nil
 	}
+	if usageLog != nil {
+		p.MeterUnits = float64(usageLog.TotalTokens())
+	}
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
@@ -380,6 +387,9 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+	}
+	if p.MeterUnits > 0 && p.User != nil && p.Account != nil && deps.billingCacheService != nil {
+		deps.billingCacheService.RecordDynamic5hPressureUsage(ctx, p.User.ID, p.Account.Platform, p.MeterUnits)
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
@@ -837,6 +847,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		if s.billingCacheService != nil {
+			s.billingCacheService.RecordDynamic5hPressureUsage(ctx, user.ID, account.Platform, float64(usageLog.TotalTokens()))
+		}
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil

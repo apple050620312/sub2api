@@ -113,6 +113,7 @@ type BillingCacheService struct {
 	cfg                   *config.Config
 	circuitBreaker        *billingCircuitBreaker
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	dynamic5hPressure     *Dynamic5hPressureService
 
 	cacheWriteChan     chan cacheWriteTask
 	cacheWriteWg       sync.WaitGroup
@@ -126,6 +127,20 @@ type BillingCacheService struct {
 	cacheWriteDropFullLastLog   int64
 	cacheWriteDropClosedCount   uint64
 	cacheWriteDropClosedLastLog int64
+}
+
+func (s *BillingCacheService) SetDynamic5hPressureService(pressure *Dynamic5hPressureService) {
+	if s != nil {
+		s.dynamic5hPressure = pressure
+	}
+}
+
+// RecordDynamic5hPressureUsage records successful metered usage for pool
+// calibration and each user's rolling fair-share usage in every pressure state.
+func (s *BillingCacheService) RecordDynamic5hPressureUsage(ctx context.Context, userID int64, platform string, meterUnits float64) {
+	if s != nil && s.dynamic5hPressure != nil {
+		s.dynamic5hPressure.RecordUsage(ctx, userID, platform, meterUnits)
+	}
 }
 
 // NewBillingCacheService 创建计费缓存服务
@@ -733,6 +748,11 @@ func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, plat
 // 订阅模式：检查缓存用量未超过限额（Group限额从参数传入）
 // platform 为请求的目标平台（如 "anthropic"），传空串 "" 时跳过 user × platform quota 检查。
 func (s *BillingCacheService) CheckBillingEligibility(ctx context.Context, user *User, apiKey *APIKey, group *Group, subscription *UserSubscription, platform string) error {
+	if user != nil && s.dynamic5hPressure != nil {
+		if err := s.dynamic5hPressure.CheckUser(ctx, user.ID, platform); err != nil {
+			return err
+		}
+	}
 	// 简易模式：跳过所有计费检查
 	if s.cfg.RunMode == config.RunModeSimple {
 		return nil
