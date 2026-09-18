@@ -14,7 +14,8 @@ import type {
   UserSpendingRankingResponse,
   UserBreakdownItem,
   UsageRequestType,
-  Dynamic5hPressureStatus
+  Dynamic5hPressureStatus,
+  Dynamic5hAdminOverview
 } from '@/types'
 
 /**
@@ -47,6 +48,11 @@ export async function getRealtimeMetrics(): Promise<{
 
 export async function getDynamic5hPressure(): Promise<Dynamic5hPressureStatus> {
   const { data } = await apiClient.get<Dynamic5hPressureStatus>('/admin/dashboard/5h-pressure')
+  return data
+}
+
+export async function getDynamic5hPressureOverview(): Promise<Dynamic5hAdminOverview> {
+  const { data } = await apiClient.get<Dynamic5hAdminOverview>('/admin/dashboard/5h-pressure/overview')
   return data
 }
 
@@ -340,6 +346,7 @@ export async function getBatchApiKeysUsage(
 export const dashboardAPI = {
   getStats,
   getDynamic5hPressure,
+  getDynamic5hPressureOverview,
   getRealtimeMetrics,
   getUsageTrend,
   getModelStats,

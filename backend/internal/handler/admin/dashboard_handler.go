@@ -45,6 +45,17 @@ func (h *DashboardHandler) GetDynamic5hPressure(c *gin.Context) {
 	response.Success(c, h.dynamic5hPressure.AdminStatus(c.Request.Context(), true))
 }
 
+func (h *DashboardHandler) GetDynamic5hPressureOverview(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.Success(c, service.Dynamic5hAdminOverview{
+			Pool:  service.Dynamic5hPressureStatus{State: service.Dynamic5hPressureNormal},
+			Users: []service.Dynamic5hAdminUserStatus{},
+		})
+		return
+	}
+	response.Success(c, h.dynamic5hPressure.AdminOverview(c.Request.Context()))
+}
+
 // parseTimeRange parses start_date, end_date query parameters
 // Uses user's timezone if provided, otherwise falls back to server timezone
 func parseTimeRange(c *gin.Context) (time.Time, time.Time) {

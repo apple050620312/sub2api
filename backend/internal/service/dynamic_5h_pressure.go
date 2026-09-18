@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -61,6 +63,16 @@ type Dynamic5hUserStatus struct {
 	RemainingPercent float64                `json:"remaining_percent"`
 	WindowStartedAt  *time.Time             `json:"window_started_at,omitempty"`
 	RecoverAt        *time.Time             `json:"recover_at,omitempty"`
+}
+
+type Dynamic5hAdminUserStatus struct {
+	UserID int64 `json:"user_id"`
+	Dynamic5hUserStatus
+}
+
+type Dynamic5hAdminOverview struct {
+	Pool  Dynamic5hPressureStatus    `json:"pool"`
+	Users []Dynamic5hAdminUserStatus `json:"users"`
 }
 
 type dynamic5hAccountWindow struct {
@@ -340,15 +352,23 @@ func (s *Dynamic5hPressureService) AdminStatus(ctx context.Context, refresh bool
 
 func (s *Dynamic5hPressureService) UserStatus(ctx context.Context, userID int64) Dynamic5hUserStatus {
 	status := s.AdminStatus(ctx, false)
+	return s.userStatus(ctx, userID, status, s.now().UTC())
+}
+
+func (s *Dynamic5hPressureService) userStatus(ctx context.Context, userID int64, status Dynamic5hPressureStatus, now time.Time) Dynamic5hUserStatus {
 	result := Dynamic5hUserStatus{Enabled: status.Enabled, State: status.State}
 	if !status.CalibrationReady || userID <= 0 || s.cache == nil {
 		return result
 	}
-	now := s.now().UTC()
 	fairShare, ok := s.currentFairShare(ctx, status, now)
 	if !ok {
 		return result
 	}
+	return s.userStatusWithFairShare(ctx, userID, status, now, fairShare)
+}
+
+func (s *Dynamic5hPressureService) userStatusWithFairShare(ctx context.Context, userID int64, status Dynamic5hPressureStatus, now time.Time, fairShare float64) Dynamic5hUserStatus {
+	result := Dynamic5hUserStatus{Enabled: status.Enabled, State: status.State}
 	usage, recoverAt := s.rollingUserUsage(ctx, userID, now, fairShare)
 	result.LimitActive = status.State == Dynamic5hPressurePeak
 	result.CurrentlyLimited = result.LimitActive && usage >= fairShare
@@ -360,6 +380,38 @@ func (s *Dynamic5hPressureService) UserStatus(ctx context.Context, userID int64)
 		result.RecoverAt = &recoverAt
 	}
 	return result
+}
+
+func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hAdminOverview {
+	status := s.AdminStatus(ctx, true)
+	overview := Dynamic5hAdminOverview{Pool: status, Users: []Dynamic5hAdminUserStatus{}}
+	if !status.Enabled || !status.CalibrationReady || s.cache == nil {
+		return overview
+	}
+
+	now := s.now().UTC()
+	activeUserIDs := s.activeUserIDs(ctx, now)
+	if len(activeUserIDs) == 0 || status.PoolCapacity <= 0 {
+		return overview
+	}
+	fairShare := status.PoolCapacity / float64(len(activeUserIDs))
+	for _, rawID := range activeUserIDs {
+		userID, err := strconv.ParseInt(rawID, 10, 64)
+		if err != nil || userID <= 0 {
+			continue
+		}
+		overview.Users = append(overview.Users, Dynamic5hAdminUserStatus{
+			UserID:              userID,
+			Dynamic5hUserStatus: s.userStatusWithFairShare(ctx, userID, status, now, fairShare),
+		})
+	}
+	sort.Slice(overview.Users, func(i, j int) bool {
+		if overview.Users[i].UsagePercent == overview.Users[j].UsagePercent {
+			return overview.Users[i].UserID < overview.Users[j].UserID
+		}
+		return overview.Users[i].UsagePercent > overview.Users[j].UsagePercent
+	})
+	return overview
 }
 
 func (s *Dynamic5hPressureService) CheckUser(ctx context.Context, userID int64, platform ...string) error {

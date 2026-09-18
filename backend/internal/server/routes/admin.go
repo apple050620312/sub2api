@@ -284,6 +284,7 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dashboard.GET("/snapshot-v2", h.Admin.Dashboard.GetSnapshotV2)
 		dashboard.GET("/stats", h.Admin.Dashboard.GetStats)
 		dashboard.GET("/5h-pressure", h.Admin.Dashboard.GetDynamic5hPressure)
+		dashboard.GET("/5h-pressure/overview", h.Admin.Dashboard.GetDynamic5hPressureOverview)
 		dashboard.GET("/realtime", h.Admin.Dashboard.GetRealtimeMetrics)
 		dashboard.GET("/trend", h.Admin.Dashboard.GetUsageTrend)
 		dashboard.GET("/models", h.Admin.Dashboard.GetModelStats)

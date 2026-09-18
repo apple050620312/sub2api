@@ -89,6 +89,27 @@ export default {
       }
     },
 
+    pressure5hPage: {
+      title: '5h Pool Pressure',
+      description: 'Dynamic fair-share protection across the effective account pool',
+      pressure: 'Pressure',
+      effectiveAccounts: 'Effective accounts',
+      activeUsers: 'Active users (5h)',
+      enforcement: 'Enforcement',
+      on: 'On',
+      off: 'Off',
+      users: 'Active user fair shares',
+      user: 'User',
+      usage: '5h Usage',
+      remaining: 'Remaining',
+      recover: 'Recover',
+      status: 'Status',
+      noUsers: 'No active users in the current five-hour window.',
+      unavailable: 'Pool calibration is not ready yet.',
+      disabled: 'Dynamic 5h pressure protection is disabled.',
+      refresh: 'Refresh'
+    },
+
     backup: {
       title: 'Database Backup',
       description: 'Full database backup to S3-compatible storage with scheduled backup and restore',

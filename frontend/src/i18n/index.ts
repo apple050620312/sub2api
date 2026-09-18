@@ -1,4 +1,5 @@
 import { createI18n } from 'vue-i18n'
+import { toTraditionalChinese } from './traditionalChinese'
 
 type LocaleCode = 'en' | 'zh'
 
@@ -6,6 +7,10 @@ type LocaleMessages = Record<string, any>
 
 const LOCALE_KEY = 'sub2api_locale'
 const DEFAULT_LOCALE: LocaleCode = 'en'
+
+function documentLanguage(locale: LocaleCode): string {
+  return locale === 'zh' ? 'zh-Hant' : 'en'
+}
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
   en: () => import('./locales/en'),
@@ -49,14 +54,17 @@ export async function loadLocaleMessages(locale: LocaleCode): Promise<void> {
 
   const loader = localeLoaders[locale]
   const module = await loader()
-  i18n.global.setLocaleMessage(locale, module.default)
+  const messages = locale === 'zh'
+    ? await toTraditionalChinese(module.default)
+    : module.default
+  i18n.global.setLocaleMessage(locale, messages)
   loadedLocales.add(locale)
 }
 
 export async function initI18n(): Promise<void> {
   const current = getLocale()
   await loadLocaleMessages(current)
-  document.documentElement.setAttribute('lang', current)
+  document.documentElement.setAttribute('lang', documentLanguage(current))
 }
 
 export async function setLocale(locale: string): Promise<void> {
@@ -67,7 +75,7 @@ export async function setLocale(locale: string): Promise<void> {
   await loadLocaleMessages(locale)
   i18n.global.locale.value = locale
   localStorage.setItem(LOCALE_KEY, locale)
-  document.documentElement.setAttribute('lang', locale)
+  document.documentElement.setAttribute('lang', documentLanguage(locale))
 
   // 同步更新浏览器页签标题，使其跟随语言切换
   const { resolveRouteDocumentTitle } = await import('@/router/title')
@@ -93,7 +101,7 @@ export function getLocale(): LocaleCode {
 
 export const availableLocales = [
   { code: 'en', name: 'English', flag: '🇺🇸' },
-  { code: 'zh', name: '中文', flag: '🇨🇳' }
+  { code: 'zh', name: '繁體中文', flag: '🇹🇼' }
 ] as const
 
 export default i18n

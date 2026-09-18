@@ -1936,6 +1936,15 @@ export interface Dynamic5hUserStatus {
   recover_at?: string
 }
 
+export interface Dynamic5hAdminUserStatus extends Dynamic5hUserStatus {
+  user_id: number
+}
+
+export interface Dynamic5hAdminOverview {
+  pool: Dynamic5hPressureStatus
+  users: Dynamic5hAdminUserStatus[]
+}
+
 export interface UsageStatsResponse {
   period?: string
   total_requests: number

@@ -58,12 +58,29 @@ export default {
     redeemCode: 'Redeem Code',
     addBalanceWithCode: 'Add balance with a code',
     pressure5h: {
+      normal: 'Pool capacity is available. Unused capacity may be borrowed.',
       peak: 'Peak demand is active. Dynamic fair-share protection is now in effect.',
       limited: 'Your rolling 5h usage is above the current fair share.',
       usage: '5h Usage: {value}%',
       remaining: 'Remaining: {value}%',
       recover: 'Recover: {time}'
     }
+  },
+
+  dynamic5h: {
+    title: '5h Fair Usage',
+    description: 'Dynamic fair share for the current rolling five-hour window',
+    unavailable: 'Usage calibration is not ready yet.',
+    disabled: 'Dynamic 5h pressure protection is disabled.',
+    normal: 'Normal',
+    peak: 'Peak',
+    limited: 'Limited',
+    available: 'Available',
+    usage: '5h Usage',
+    remaining: 'Remaining',
+    recover: 'Recover',
+    now: 'Now',
+    refresh: 'Refresh'
   },
 
   // Groups (shared)

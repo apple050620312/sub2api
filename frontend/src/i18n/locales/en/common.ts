@@ -168,6 +168,8 @@ export default {
     apiKeys: 'API Keys',
     batchImage: 'Batch Images',
     usage: 'Usage',
+    dynamic5h: '5h Fair Usage',
+    dynamic5hAdmin: '5h Pool Pressure',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',

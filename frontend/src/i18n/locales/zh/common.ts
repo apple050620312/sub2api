@@ -168,6 +168,8 @@ export default {
     apiKeys: 'API 密钥',
     batchImage: '批量生图',
     usage: '使用记录',
+    dynamic5h: '5h 公平使用',
+    dynamic5hAdmin: '5h 池压力',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',

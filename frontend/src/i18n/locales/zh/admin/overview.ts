@@ -89,6 +89,27 @@ export default {
       }
     },
 
+    pressure5hPage: {
+      title: '5h 池压力',
+      description: '根据有效账号池动态保护每位用户的公平份额',
+      pressure: '压力',
+      effectiveAccounts: '有效账号',
+      activeUsers: '近 5h 活跃用户',
+      enforcement: '公平份额限制',
+      on: '已启用',
+      off: '未启用',
+      users: '活跃用户公平份额',
+      user: '用户',
+      usage: '5h Usage',
+      remaining: 'Remaining',
+      recover: 'Recover',
+      status: '状态',
+      noUsers: '目前 5h 窗口内没有活跃用户。',
+      unavailable: '池容量校准尚未完成。',
+      disabled: '动态 5h 压力保护已停用。',
+      refresh: '刷新'
+    },
+
     backup: {
       title: '数据库备份',
       description: '全量数据库备份到 S3 兼容存储，支持定时备份与恢复',

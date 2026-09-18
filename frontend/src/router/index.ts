@@ -216,6 +216,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/5h-pressure',
+    name: 'Dynamic5hPressure',
+    component: () => import('@/views/user/Dynamic5hPressureView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: '5h Fair Usage',
+      titleKey: 'dynamic5h.title',
+      descriptionKey: 'dynamic5h.description'
+    }
+  },
+  {
     path: '/batch-image',
     name: 'BatchImageGuide',
     alias: '/docs/batch-image',
@@ -424,6 +436,18 @@ const routes: RouteRecordRaw[] = [
       title: 'Ops Monitoring',
       titleKey: 'admin.ops.title',
       descriptionKey: 'admin.ops.description'
+    }
+  },
+  {
+    path: '/admin/5h-pressure',
+    name: 'AdminDynamic5hPressure',
+    component: () => import('@/views/admin/Dynamic5hPressureView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '5h Pool Pressure',
+      titleKey: 'admin.pressure5hPage.title',
+      descriptionKey: 'admin.pressure5hPage.description'
     }
   },
   {

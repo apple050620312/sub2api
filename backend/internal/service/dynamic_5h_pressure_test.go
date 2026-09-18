@@ -192,6 +192,26 @@ func TestDynamic5hFairShareBorrowingAndPeakReclamation(t *testing.T) {
 	require.Zero(t, overused.RemainingPercent)
 }
 
+func TestDynamic5hAdminOverviewSortsActiveUsersByUsage(t *testing.T) {
+	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	svc, ctx := newDynamic5hTestService(t, now)
+	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 300)
+	svc.RecordUsage(ctx, 1, PlatformOpenAI, 180)
+	svc.RecordUsage(ctx, 2, PlatformOpenAI, 30)
+	svc.RecordUsage(ctx, 3, PlatformOpenAI, 90)
+
+	overview := svc.AdminOverview(ctx)
+	require.Equal(t, []int64{1, 3, 2}, []int64{
+		overview.Users[0].UserID,
+		overview.Users[1].UserID,
+		overview.Users[2].UserID,
+	})
+	require.InDelta(t, 180, overview.Users[0].UsagePercent, 0.01)
+	require.True(t, overview.Users[0].CurrentlyLimited)
+	require.InDelta(t, 90, overview.Users[1].UsagePercent, 0.01)
+	require.False(t, overview.Users[1].CurrentlyLimited)
+}
+
 func TestDynamic5hNewPeakUserGetsDynamicFairShare(t *testing.T) {
 	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
 	svc, ctx := newDynamic5hTestService(t, now)

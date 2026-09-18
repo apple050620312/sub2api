@@ -27,6 +27,7 @@
     "driver.js": "^1.4.0",
     "file-saver": "^2.0.5",
     "marked": "^17.0.1",
+    "opencc-js": "1.4.2",
     "pinia": "^2.1.7",
     "qrcode": "^1.5.4",
     "vue": "^3.4.0",

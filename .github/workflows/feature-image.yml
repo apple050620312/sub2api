@@ -41,6 +41,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=raw,value=latest
             type=raw,value=dynamic-5h-pressure
             type=sha,prefix=dynamic-5h-pressure-
 

@@ -58,12 +58,29 @@ export default {
     redeemCode: '兑换码',
     addBalanceWithCode: '使用兑换码充值',
     pressure5h: {
+      normal: '目前池容量充足，可借用其他用户的闲置容量。',
       peak: '目前为 Peak 状态，动态公平份额保护已生效。',
       limited: '你的 rolling 5h 使用量已超过目前的公平份额。',
       usage: '5h Usage：{value}%',
       remaining: 'Remaining：{value}%',
       recover: 'Recover：{time}'
     }
+  },
+
+  dynamic5h: {
+    title: '5h 公平使用',
+    description: '目前 rolling 5h 窗口的动态公平份额',
+    unavailable: '使用量校准尚未完成。',
+    disabled: '动态 5h 压力保护已停用。',
+    normal: '正常',
+    peak: 'Peak',
+    limited: '已限制',
+    available: '可使用',
+    usage: '5h Usage',
+    remaining: 'Remaining',
+    recover: 'Recover',
+    now: '现在',
+    refresh: '刷新'
   },
 
   // Groups (shared)
