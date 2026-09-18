@@ -80,3 +80,12 @@ describe('AppSidebar subscription feature flag', () => {
     expect(componentSource).toMatch(/path: '\/purchase'[^\n]*label: purchaseNavLabel\.value/)
   })
 })
+
+describe('AppSidebar Dynamic 5h icon', () => {
+  it('uses a dedicated icon that no unrelated navigation entry reuses', () => {
+    expect(componentSource).toContain('const Dynamic5hIcon = {')
+    expect(componentSource).toMatch(/path: '\/5h-pressure'[^\n]*icon: Dynamic5hIcon/)
+    expect(componentSource).toMatch(/path: '\/admin\/5h-pressure'[^\n]*icon: Dynamic5hIcon/)
+    expect(componentSource.match(/icon: Dynamic5hIcon/g)).toHaveLength(2)
+  })
+})

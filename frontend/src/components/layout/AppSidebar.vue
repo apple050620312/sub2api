@@ -621,6 +621,23 @@ const ChevronDoubleRightIcon = {
     )
 }
 
+// Dedicated rolling-window clock. Keep this exclusive to Dynamic 5h entries
+// so it cannot be confused with channel monitoring or another sidebar page.
+const Dynamic5hIcon = {
+  render: () =>
+    h(
+      'svg',
+      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
+      [
+        h('path', {
+          'stroke-linecap': 'round',
+          'stroke-linejoin': 'round',
+          d: 'M12 6v6l3.75 2.25M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+        })
+      ]
+    )
+}
+
 const SignalIcon = {
   render: () =>
     h(
@@ -726,7 +743,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/5h-pressure', label: t('nav.dynamic5h'), icon: SignalIcon },
+    { path: '/5h-pressure', label: t('nav.dynamic5h'), icon: Dynamic5hIcon },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
@@ -777,7 +794,7 @@ const customMenuItemsForAdmin = computed(() => {
 const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
-    { path: '/admin/5h-pressure', label: t('nav.dynamic5hAdmin'), icon: SignalIcon },
+    { path: '/admin/5h-pressure', label: t('nav.dynamic5hAdmin'), icon: Dynamic5hIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },

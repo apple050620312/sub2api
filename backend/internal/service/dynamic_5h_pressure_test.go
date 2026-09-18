@@ -230,6 +230,32 @@ func TestDynamic5hNewPeakUserGetsDynamicFairShare(t *testing.T) {
 	require.ErrorIs(t, svc.CheckUser(ctx, 10), ErrDynamic5hPressureLimitExceeded)
 }
 
+func TestDynamic5hInactiveDemandExpiresWithoutErasingRollingUsage(t *testing.T) {
+	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	current := now
+	svc, ctx := newDynamic5hTestService(t, now)
+	svc.now = func() time.Time { return current }
+	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 200)
+
+	// Both users initially compete for the pool, so each fair share is 100.
+	svc.RecordUsage(ctx, 1, PlatformOpenAI, 120)
+	svc.RecordUsage(ctx, 2, PlatformOpenAI, 20)
+	require.ErrorIs(t, svc.CheckUser(ctx, 1), ErrDynamic5hPressureLimitExceeded)
+
+	// After the short demand lease expires, user 1 can return and borrow the
+	// idle user's share. Their previous 120 units are still in the rolling 5h
+	// meter, but the sole active user's current fair share is now 200.
+	current = now.Add(dynamic5hActiveLease + time.Second)
+	require.NoError(t, svc.CheckUser(ctx, 1))
+	require.InDelta(t, 60, svc.UserStatus(ctx, 1).UsagePercent, 0.01)
+
+	// User 2 rejoins immediately on a new request. The population returns to
+	// two, user 1's old usage is not erased, and excess borrowing is reclaimed.
+	require.NoError(t, svc.CheckUser(ctx, 2))
+	require.ErrorIs(t, svc.CheckUser(ctx, 1), ErrDynamic5hPressureLimitExceeded)
+	require.InDelta(t, 120, svc.UserStatus(ctx, 1).UsagePercent, 0.01)
+}
+
 func TestDynamic5hNormalImmediatelyReleasesPeakLimit(t *testing.T) {
 	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
 	svc, ctx := newDynamic5hTestService(t, now)

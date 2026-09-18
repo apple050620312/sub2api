@@ -94,7 +94,7 @@ export default {
       description: 'Dynamic fair-share protection across the effective account pool',
       pressure: 'Pressure',
       effectiveAccounts: 'Effective accounts',
-      activeUsers: 'Active users (5h)',
+      activeUsers: 'Active users (15m)',
       enforcement: 'Enforcement',
       on: 'On',
       off: 'Off',

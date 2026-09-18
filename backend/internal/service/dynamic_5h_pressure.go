@@ -24,6 +24,9 @@ const (
 	dynamic5hWindow      = 5 * time.Hour
 	dynamic5hMeterBucket = 5 * time.Minute
 	dynamic5hRedisTTL    = 6 * time.Hour
+	// Usage remains rolling for five hours, while the protected population
+	// tracks only users with current demand. Each request renews this lease.
+	dynamic5hActiveLease = 15 * time.Minute
 )
 
 var ErrDynamic5hPressureLimitExceeded = infraerrors.TooManyRequests(
@@ -447,7 +450,7 @@ func (s *Dynamic5hPressureService) RecordUsage(ctx context.Context, userID int64
 	}
 	now := s.now().UTC()
 	bucket := now.Unix() / int64(dynamic5hMeterBucket/time.Second)
-	if err := s.cache.RecordUsage(ctx, userID, bucket, now, now.Add(-dynamic5hWindow), meterUnits, dynamic5hRedisTTL); err != nil {
+	if err := s.cache.RecordUsage(ctx, userID, bucket, now, now.Add(-dynamic5hActiveLease), meterUnits, dynamic5hRedisTTL); err != nil {
 		slog.Warn("dynamic 5h pressure calibration update failed; failing open", "error", err)
 		return
 	}
@@ -464,7 +467,7 @@ func dynamic5hPlatformSupported(platform string) bool {
 
 func (s *Dynamic5hPressureService) touchActiveUser(ctx context.Context, userID int64, now time.Time) {
 	if s.cache != nil {
-		_ = s.cache.TouchActiveUser(ctx, userID, now, now.Add(-dynamic5hWindow))
+		_ = s.cache.TouchActiveUser(ctx, userID, now, now.Add(-dynamic5hActiveLease))
 	}
 }
 
@@ -472,7 +475,7 @@ func (s *Dynamic5hPressureService) activeUserIDs(ctx context.Context, now time.T
 	if s.cache == nil {
 		return nil
 	}
-	ids, err := s.cache.ActiveUserIDs(ctx, now.Add(-dynamic5hWindow))
+	ids, err := s.cache.ActiveUserIDs(ctx, now.Add(-dynamic5hActiveLease))
 	if err != nil {
 		return nil
 	}

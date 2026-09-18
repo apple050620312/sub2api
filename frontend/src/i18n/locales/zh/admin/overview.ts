@@ -94,7 +94,7 @@ export default {
       description: '根据有效账号池动态保护每位用户的公平份额',
       pressure: '压力',
       effectiveAccounts: '有效账号',
-      activeUsers: '近 5h 活跃用户',
+      activeUsers: '近 15 分钟活跃用户',
       enforcement: '公平份额限制',
       on: '已启用',
       off: '未启用',
