@@ -109,8 +109,7 @@ export default {
       disabled: '动态 5h 压力保护已停用。',
       refresh: '刷新',
       policy: '策略',
-      normal: '1x',
-      double: '2x',
+      multiplier: '倍率',
       exempt: '豁免',
       resetUsage: '重置用量'
     },

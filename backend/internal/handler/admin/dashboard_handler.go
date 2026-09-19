@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +65,7 @@ func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
 	var req Dynamic5hPolicyRequest
 	if err := c.ShouldBindJSON(&req); err != nil { response.BadRequest(c, "Invalid policy"); return }
 	if req.Multiplier == 0 { req.Multiplier = 1 }
+	if req.Multiplier <= 0 || math.IsNaN(req.Multiplier) || math.IsInf(req.Multiplier, 0) { response.BadRequest(c, "Multiplier must be a positive number"); return }
 	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}); err != nil { response.Error(c, 500, err.Error()); return }
 	response.Success(c, gin.H{"user_id": userID, "exempt": req.Exempt, "multiplier": req.Multiplier})
 }

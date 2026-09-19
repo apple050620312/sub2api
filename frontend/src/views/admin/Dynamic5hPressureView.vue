@@ -29,12 +29,19 @@
             <div v-if="!overview.pool.calibration_ready" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.unavailable') }}</div>
             <div v-else-if="overview.users.length === 0" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-              <div v-for="user in overview.users" :key="user.user_id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(110px,0.7fr)_minmax(280px,2fr)_110px_180px_100px] lg:items-center">
+              <div v-for="user in overview.users" :key="user.user_id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(160px,0.8fr)_minmax(260px,2fr)_100px_170px_minmax(250px,auto)] lg:items-center">
                 <div><p class="font-medium text-gray-900 dark:text-white">{{ user.email || `用户 #${user.user_id}` }}</p><p class="text-xs text-gray-400">ID: {{ user.user_id }}</p></div>
                 <Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" />
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.recover') }}</p><p class="text-sm text-gray-700 dark:text-gray-200">{{ formatTime(user.recover_at) }}</p></div>
-                <div class="flex flex-wrap items-center gap-2"><select class="input h-8 text-xs" :aria-label="t('admin.pressure5hPage.policy')" :value="user.exempt ? 'exempt' : String(user.multiplier || 1)" @change="updatePolicy(user, ($event.target as HTMLSelectElement).value)"><option value="1">{{ t('admin.pressure5hPage.normal') }}</option><option value="2">{{ t('admin.pressure5hPage.double') }}</option><option value="exempt">{{ t('admin.pressure5hPage.exempt') }}</option></select><button class="btn-secondary h-8 px-2 text-xs" @click="resetUser(user.user_id)">{{ t('admin.pressure5hPage.resetUsage') }}</button></div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="flex h-8 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('admin.pressure5hPage.multiplier') }}
+                    <input class="input h-8 w-20 px-2 text-xs" type="number" min="0.01" step="0.01" :value="user.multiplier || 1" @change="updateMultiplier(user, $event)" />
+                  </label>
+                  <button class="h-8 px-2 text-xs" :class="user.exempt ? 'btn-primary' : 'btn-secondary'" :aria-pressed="user.exempt" @click="toggleExempt(user)">{{ t('admin.pressure5hPage.exempt') }}</button>
+                  <button class="btn-secondary h-8 px-2 text-xs" @click="resetUser(user.user_id)">{{ t('admin.pressure5hPage.resetUsage') }}</button>
+                </div>
               </div>
             </div>
           </section>
@@ -67,7 +74,16 @@ const metrics = computed(() => overview.value ? [
 ] : [])
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
 const load = async () => { loading.value = true; try { overview.value = await getDynamic5hPressureOverview() } finally { loading.value = false } }
-const updatePolicy = async (user: Dynamic5hAdminUserStatus, value: string) => { await setDynamic5hUserPolicy(user.user_id, { exempt: value === 'exempt', multiplier: value === 'exempt' ? 1 : Number(value) }); await load() }
+const updateMultiplier = async (user: Dynamic5hAdminUserStatus, event: Event) => {
+  const multiplier = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(multiplier) || multiplier <= 0) { await load(); return }
+  await setDynamic5hUserPolicy(user.user_id, { exempt: user.exempt, multiplier })
+  await load()
+}
+const toggleExempt = async (user: Dynamic5hAdminUserStatus) => {
+  await setDynamic5hUserPolicy(user.user_id, { exempt: !user.exempt, multiplier: user.multiplier || 1 })
+  await load()
+}
 const resetUser = async (userId: number) => { await resetDynamic5hUser(userId); await load() }
 
 onMounted(() => { void load(); timer = setInterval(() => void load(), 30_000) })

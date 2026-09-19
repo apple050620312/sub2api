@@ -109,8 +109,7 @@ export default {
       disabled: 'Dynamic 5h pressure protection is disabled.',
       refresh: 'Refresh',
       policy: 'Policy',
-      normal: '1x',
-      double: '2x',
+      multiplier: 'Multiplier',
       exempt: 'Exempt',
       resetUsage: 'Reset usage'
     },

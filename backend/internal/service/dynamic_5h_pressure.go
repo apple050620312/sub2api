@@ -476,15 +476,13 @@ func (s *Dynamic5hPressureService) userPolicy(ctx context.Context, userID int64)
 	if c, ok := s.cache.(Dynamic5hPolicyCache); ok {
 		if loaded, err := c.LoadUserPolicy(ctx, userID); err == nil { p = loaded }
 	}
-	if p.Multiplier <= 0 { p.Multiplier = 1 }
-	if p.Multiplier > 2 { p.Multiplier = 2 }
+	if p.Multiplier <= 0 || math.IsNaN(p.Multiplier) || math.IsInf(p.Multiplier, 0) { p.Multiplier = 1 }
 	return p
 }
 
 func (s *Dynamic5hPressureService) SetUserPolicy(ctx context.Context, userID int64, policy Dynamic5hUserPolicy) error {
 	if userID <= 0 { return fmt.Errorf("invalid user id") }
-	if policy.Multiplier <= 0 { policy.Multiplier = 1 }
-	if policy.Multiplier > 2 { policy.Multiplier = 2 }
+	if policy.Multiplier <= 0 || math.IsNaN(policy.Multiplier) || math.IsInf(policy.Multiplier, 0) { return fmt.Errorf("multiplier must be a positive finite number") }
 	c, ok := s.cache.(Dynamic5hPolicyCache)
 	if !ok { return fmt.Errorf("dynamic 5h policy cache unavailable") }
 	return c.StoreUserPolicy(ctx, userID, policy)

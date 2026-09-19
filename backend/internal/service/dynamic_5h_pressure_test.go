@@ -19,12 +19,13 @@ type dynamic5hMemoryCache struct {
 	active    map[int64]time.Time
 	meter     map[int64]float64
 	userMeter map[int64]map[int64]float64
+	policies  map[int64]Dynamic5hUserPolicy
 }
 
 func newDynamic5hMemoryCache() *dynamic5hMemoryCache {
 	return &dynamic5hMemoryCache{
 		active: make(map[int64]time.Time), meter: make(map[int64]float64),
-		userMeter: make(map[int64]map[int64]float64),
+		userMeter: make(map[int64]map[int64]float64), policies: make(map[int64]Dynamic5hUserPolicy),
 	}
 }
 
@@ -96,6 +97,24 @@ func (c *dynamic5hMemoryCache) UserMeterValues(_ context.Context, userID, latest
 	return dynamic5hMemoryValues(c.userMeter[userID], latestBucket, count), nil
 }
 
+func (c *dynamic5hMemoryCache) LoadUserPolicy(_ context.Context, userID int64) (Dynamic5hUserPolicy, error) {
+	policy, ok := c.policies[userID]
+	if !ok {
+		policy.Multiplier = 1
+	}
+	return policy, nil
+}
+
+func (c *dynamic5hMemoryCache) StoreUserPolicy(_ context.Context, userID int64, policy Dynamic5hUserPolicy) error {
+	c.policies[userID] = policy
+	return nil
+}
+
+func (c *dynamic5hMemoryCache) ResetUserUsage(_ context.Context, userID int64) error {
+	delete(c.userMeter, userID)
+	return nil
+}
+
 func dynamic5hMemoryValues(source map[int64]float64, latestBucket int64, count int) []float64 {
 	values := make([]float64, count)
 	for i := range values {
@@ -143,6 +162,13 @@ func TestNextDynamic5hPressureStateUsesHysteresis(t *testing.T) {
 	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressureNormal, 0.85, true, cfg))
 	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressurePeak, 0.75, true, cfg))
 	require.Equal(t, Dynamic5hPressureNormal, nextDynamic5hPressureState(Dynamic5hPressurePeak, 0.69, true, cfg))
+}
+
+func TestDynamic5hCustomMultiplierIsNotCappedAtTwo(t *testing.T) {
+	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	svc, ctx := newDynamic5hTestService(t, now)
+	require.NoError(t, svc.SetUserPolicy(ctx, 7, Dynamic5hUserPolicy{Multiplier: 3.75}))
+	require.Equal(t, 3.75, svc.userPolicy(ctx, 7).Multiplier)
 }
 
 func TestDynamic5hFiveUsersShareFiveAccountCapacity(t *testing.T) {
