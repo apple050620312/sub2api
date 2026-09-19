@@ -144,11 +144,6 @@ export default defineConfig(({ mode }) => {
               return 'vendor-stripe'
             }
 
-            // OpenCC 只在中文介面載入，避免字元字典進入首屏 vendor bundle。
-            if (id.includes('/opencc-js/')) {
-              return 'vendor-opencc'
-            }
-
             // 其他小型第三方库合并
             return 'vendor-misc'
           }

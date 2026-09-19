@@ -47,9 +47,6 @@ importers:
       marked:
         specifier: ^17.0.1
         version: 17.0.1
-      opencc-js:
-        specifier: 1.4.2
-        version: 1.4.2
       pinia:
         specifier: ^2.1.7
         version: 2.3.1(typescript@5.6.3)(vue@3.5.26(typescript@5.6.3))
@@ -3355,9 +3352,6 @@ packages:
 
   oniguruma-to-es@4.3.5:
     resolution: {integrity: sha512-Zjygswjpsewa0NLTsiizVuMQZbp0MDyM6lIt66OxsF21npUDlzpHi1Mgb/qhQdkb+dWFTzJmFbEWdvZgRho8eQ==}
-
-  opencc-js@1.4.2:
-    resolution: {integrity: sha512-EdcspgdROiCCZDM+jZR6Pa670xW+EW2QhctPBQ8gRjg6lrx4IHEl+2s+kt5izk/TkxVRgdWuFgaGkaEdIUfdaw==}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -8446,8 +8440,6 @@ snapshots:
       oniguruma-parser: 0.12.1
       regex: 6.1.0
       regex-recursion: 6.0.2
-
-  opencc-js@1.4.2: {}
 
   optionator@0.9.4:
     dependencies:
