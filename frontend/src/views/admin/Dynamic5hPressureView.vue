@@ -30,7 +30,7 @@
             <div v-else-if="overview.users.length === 0" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
               <div v-for="user in overview.users" :key="user.user_id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(160px,0.8fr)_minmax(260px,2fr)_100px_170px_minmax(250px,auto)] lg:items-center">
-                <div><p class="font-medium text-gray-900 dark:text-white">{{ user.email || `用户 #${user.user_id}` }}</p><p class="text-xs text-gray-400">ID: {{ user.user_id }}</p></div>
+                <div><div class="flex flex-wrap items-center gap-2"><p class="font-medium text-gray-900 dark:text-white">{{ user.email || `用户 #${user.user_id}` }}</p><span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="user.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'">{{ t(`admin.pressure5hPage.${user.active ? 'active' : 'inactive'}`) }}</span></div><p class="text-xs text-gray-400">ID: {{ user.user_id }}</p></div>
                 <Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" />
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.recover') }}</p><p class="text-sm text-gray-700 dark:text-gray-200">{{ formatTime(user.recover_at) }}</p></div>

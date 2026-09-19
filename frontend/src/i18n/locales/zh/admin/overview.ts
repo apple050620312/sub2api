@@ -99,6 +99,8 @@ export default {
       on: '已启用',
       off: '未启用',
       users: '活跃用户公平份额',
+      active: '活跃',
+      inactive: '非活跃',
       user: '用户',
       usage: '5 小时用量',
       remaining: '剩余',

@@ -15,6 +15,7 @@ const (
 	dynamic5hStatusKey       = "dynamic_5h_pressure:status"
 	dynamic5hRefreshLockKey  = "dynamic_5h_pressure:refresh_lock"
 	dynamic5hActiveUsersKey  = "dynamic_5h_pressure:active_users"
+	dynamic5hRollingUsersKey = "dynamic_5h_pressure:rolling_users"
 	dynamic5hMeterBucketBase = "dynamic_5h_pressure:meter:"
 	dynamic5hUserMeterBase   = "dynamic_5h_pressure:user_meter:"
 	dynamic5hPolicyBase      = "dynamic_5h_pressure:policy:"
@@ -77,6 +78,12 @@ func (c *dynamic5hPressureCache) ActiveUserIDs(ctx context.Context, cutoff time.
 	}).Result()
 }
 
+func (c *dynamic5hPressureCache) RollingUserIDs(ctx context.Context, cutoff time.Time) ([]string, error) {
+	return c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key: dynamic5hRollingUsersKey, Start: strconv.FormatInt(cutoff.Unix(), 10), Stop: "+inf", ByScore: true,
+	}).Result()
+}
+
 func (c *dynamic5hPressureCache) RecordUsage(
 	ctx context.Context,
 	userID, bucket int64,
@@ -87,6 +94,8 @@ func (c *dynamic5hPressureCache) RecordUsage(
 	pipe := c.rdb.TxPipeline()
 	pipe.ZAdd(ctx, dynamic5hActiveUsersKey, redis.Z{Score: float64(now.Unix()), Member: strconv.FormatInt(userID, 10)})
 	pipe.ZRemRangeByScore(ctx, dynamic5hActiveUsersKey, "-inf", strconv.FormatInt(cutoff.Unix(), 10))
+	pipe.ZAdd(ctx, dynamic5hRollingUsersKey, redis.Z{Score: float64(now.Unix()), Member: strconv.FormatInt(userID, 10)})
+	pipe.ZRemRangeByScore(ctx, dynamic5hRollingUsersKey, "-inf", strconv.FormatInt(now.Add(-5*time.Hour).Unix(), 10))
 	meterKey := fmt.Sprintf("%s%d", dynamic5hMeterBucketBase, bucket)
 	pipe.IncrByFloat(ctx, meterKey, amount)
 	pipe.Expire(ctx, meterKey, ttl)
@@ -147,7 +156,8 @@ func (c *dynamic5hPressureCache) ResetUserUsage(ctx context.Context, userID int6
 	for {
 		keys, next, err := c.rdb.Scan(ctx, cursor, pattern, 500).Result(); if err != nil { return err }
 		if len(keys) > 0 { if err := c.rdb.Del(ctx, keys...).Err(); err != nil { return err } }
-		cursor = next; if cursor == 0 { return nil }
+		cursor = next
+		if cursor == 0 { return c.rdb.ZRem(ctx, dynamic5hRollingUsersKey, strconv.FormatInt(userID, 10)).Err() }
 	}
 }
 

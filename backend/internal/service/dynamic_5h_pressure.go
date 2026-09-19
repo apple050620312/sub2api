@@ -71,6 +71,7 @@ type Dynamic5hUserStatus struct {
 type Dynamic5hAdminUserStatus struct {
 	UserID int64 `json:"user_id"`
 	Email string `json:"email"`
+	Active bool `json:"active"`
 	Exempt bool `json:"exempt"`
 	Multiplier float64 `json:"multiplier"`
 	Dynamic5hUserStatus
@@ -106,6 +107,7 @@ type Dynamic5hPressureCache interface {
 	ReleaseRefreshLock(ctx context.Context, token string) error
 	TouchActiveUser(ctx context.Context, userID int64, now, cutoff time.Time) error
 	ActiveUserIDs(ctx context.Context, cutoff time.Time) ([]string, error)
+	RollingUserIDs(ctx context.Context, cutoff time.Time) ([]string, error)
 	RecordUsage(ctx context.Context, userID, bucket int64, now, cutoff time.Time, amount float64, ttl time.Duration) error
 	MeterValues(ctx context.Context, latestBucket int64, count int) ([]float64, error)
 	UserMeterValues(ctx context.Context, userID, latestBucket int64, count int) ([]float64, error)
@@ -420,17 +422,22 @@ func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hA
 
 	now := s.now().UTC()
 	activeUserIDs := s.activeUserIDs(ctx, now)
-	if len(activeUserIDs) == 0 || status.PoolCapacity <= 0 {
+	rollingUserIDs := s.rollingUserIDs(ctx, now)
+	if len(rollingUserIDs) == 0 || status.PoolCapacity <= 0 {
 		return overview
 	}
-	fairShare := status.PoolCapacity / float64(len(activeUserIDs))
-	for _, rawID := range activeUserIDs {
+	active := make(map[string]bool, len(activeUserIDs))
+	for _, rawID := range activeUserIDs { active[rawID] = true }
+	protectedUsers := len(activeUserIDs)
+	if protectedUsers == 0 { protectedUsers = 1 }
+	fairShare := status.PoolCapacity / float64(protectedUsers)
+	for _, rawID := range rollingUserIDs {
 		userID, err := strconv.ParseInt(rawID, 10, 64)
 		if err != nil || userID <= 0 {
 			continue
 		}
 		policy := s.userPolicy(ctx, userID)
-		entry := Dynamic5hAdminUserStatus{UserID: userID, Exempt: policy.Exempt, Multiplier: policy.Multiplier, Dynamic5hUserStatus: s.userStatusWithFairShare(ctx, userID, status, now, fairShare)}
+		entry := Dynamic5hAdminUserStatus{UserID: userID, Active: active[rawID], Exempt: policy.Exempt, Multiplier: policy.Multiplier, Dynamic5hUserStatus: s.userStatusWithFairShare(ctx, userID, status, now, fairShare)}
 		if s.userRepo != nil { if user, err := s.userRepo.GetByID(ctx, userID); err == nil && user != nil { entry.Email = user.Email } }
 		overview.Users = append(overview.Users, entry)
 	}
@@ -528,6 +535,17 @@ func (s *Dynamic5hPressureService) activeUserIDs(ctx context.Context, now time.T
 		return nil
 	}
 	ids, err := s.cache.ActiveUserIDs(ctx, now.Add(-dynamic5hActiveLease))
+	if err != nil {
+		return nil
+	}
+	return ids
+}
+
+func (s *Dynamic5hPressureService) rollingUserIDs(ctx context.Context, now time.Time) []string {
+	if s.cache == nil {
+		return nil
+	}
+	ids, err := s.cache.RollingUserIDs(ctx, now.Add(-dynamic5hWindow))
 	if err != nil {
 		return nil
 	}

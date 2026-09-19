@@ -1939,6 +1939,7 @@ export interface Dynamic5hUserStatus {
 export interface Dynamic5hAdminUserStatus extends Dynamic5hUserStatus {
   user_id: number
   email: string
+  active: boolean
   exempt: boolean
   multiplier: number
 }

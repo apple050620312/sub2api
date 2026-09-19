@@ -73,6 +73,20 @@ func (c *dynamic5hMemoryCache) ActiveUserIDs(_ context.Context, cutoff time.Time
 	return ids, nil
 }
 
+func (c *dynamic5hMemoryCache) RollingUserIDs(_ context.Context, cutoff time.Time) ([]string, error) {
+	ids := make([]string, 0, len(c.userMeter))
+	cutoffBucket := cutoff.Unix() / int64(dynamic5hMeterBucket/time.Second)
+	for id, buckets := range c.userMeter {
+		for bucket, value := range buckets {
+			if bucket >= cutoffBucket && value > 0 {
+				ids = append(ids, strconv.FormatInt(id, 10))
+				break
+			}
+		}
+	}
+	return ids, nil
+}
+
 func (c *dynamic5hMemoryCache) RecordUsage(
 	ctx context.Context,
 	userID, bucket int64,

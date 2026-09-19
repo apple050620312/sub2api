@@ -99,6 +99,8 @@ export default {
       on: 'On',
       off: 'Off',
       users: 'Active user fair shares',
+      active: 'Active',
+      inactive: 'Inactive',
       user: 'User',
       usage: '5h Usage',
       remaining: 'Remaining',
