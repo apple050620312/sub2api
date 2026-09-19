@@ -96,6 +96,11 @@ export default {
       effectiveAccounts: 'Effective accounts',
       activeUsers: 'Active users (15m)',
       enforcement: 'Enforcement',
+      recoveringNextHour: 'Capacity recovering in 1h',
+      excludedAccounts: 'Excluded accounts',
+      nextReset: 'Nearest 5h reset',
+      thresholds: 'Enter / exit thresholds',
+      states: { normal: 'Normal', peak: 'Peak protection' },
       on: 'On',
       off: 'Off',
       users: 'Active user fair shares',
@@ -113,7 +118,17 @@ export default {
       policy: 'Policy',
       multiplier: 'Multiplier',
       exempt: 'Exempt',
-      resetUsage: 'Reset usage'
+      resetUsage: 'Reset usage',
+      reason: 'Reason',
+      resetConfirm: 'Reset this user’s rolling five-hour usage? This action is audited.',
+      overcommitted: 'Extra guaranteed allowances total {value}% of the base pool and may be overcommitted during peak periods.',
+      accountDiagnostics: 'Effective account diagnostics',
+      account: 'Account',
+      rejoin: 'Expected rejoin',
+      audit: 'Action audit',
+      noAudit: 'No actions recorded',
+      auditActions: { policy_update: 'Policy update', usage_reset: 'Usage reset' },
+      accountReasons: { included: 'Included', unsupported_platform: 'Unsupported platform', disabled: 'Disabled', unschedulable: 'Unschedulable', credential_expired: 'Credential or account expired', rate_limited: 'Rate limited', overloaded: 'Overloaded', temporarily_unavailable: 'Temporarily unavailable', seven_day_exhausted: '7d exhausted', identity_mismatch: 'Account identity mismatch', snapshot_missing: 'Usage snapshot missing', snapshot_expired: 'Usage snapshot expired' }
     },
 
     backup: {

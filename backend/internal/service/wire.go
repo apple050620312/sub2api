@@ -843,7 +843,7 @@ var ProviderSet = wire.NewSet(
 	ProvidePricingService,
 	NewBillingService,
 	ProvideBillingCacheService,
-	NewDynamic5hPressureService,
+	ProvideDynamic5hPressureService,
 	NewAnnouncementService,
 	NewAdminService,
 	NewGatewayService,

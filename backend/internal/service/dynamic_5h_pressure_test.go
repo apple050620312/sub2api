@@ -20,12 +20,14 @@ type dynamic5hMemoryCache struct {
 	meter     map[int64]float64
 	userMeter map[int64]map[int64]float64
 	policies  map[int64]Dynamic5hUserPolicy
+	pending map[int64]float64
+	reservations map[string]float64
 }
 
 func newDynamic5hMemoryCache() *dynamic5hMemoryCache {
 	return &dynamic5hMemoryCache{
 		active: make(map[int64]time.Time), meter: make(map[int64]float64),
-		userMeter: make(map[int64]map[int64]float64), policies: make(map[int64]Dynamic5hUserPolicy),
+		userMeter: make(map[int64]map[int64]float64), policies: make(map[int64]Dynamic5hUserPolicy), pending: make(map[int64]float64), reservations: make(map[string]float64),
 	}
 }
 
@@ -110,6 +112,20 @@ func (c *dynamic5hMemoryCache) MeterValues(_ context.Context, latestBucket int64
 func (c *dynamic5hMemoryCache) UserMeterValues(_ context.Context, userID, latestBucket int64, count int) ([]float64, error) {
 	return dynamic5hMemoryValues(c.userMeter[userID], latestBucket, count), nil
 }
+
+func (c *dynamic5hMemoryCache) ReserveUserUsage(_ context.Context, userID int64, token string, observed, limit, amount float64, _ time.Time, _ time.Duration) (bool, float64, error) {
+	if _, ok := c.reservations[token]; ok { return true,c.pending[userID],nil }
+	if observed+c.pending[userID]+amount > limit { return false,c.pending[userID],nil }
+	c.pending[userID] += amount; c.reservations[token]=amount
+	return true,c.pending[userID],nil
+}
+
+func (c *dynamic5hMemoryCache) SettleUserReservation(_ context.Context, userID int64, token string) error {
+	if amount,ok := c.reservations[token]; ok { c.pending[userID]-=amount; delete(c.reservations,token) }
+	return nil
+}
+
+func (c *dynamic5hMemoryCache) PendingUserUsage(_ context.Context, userID int64) (float64,error) { return c.pending[userID],nil }
 
 func (c *dynamic5hMemoryCache) LoadUserPolicy(_ context.Context, userID int64) (Dynamic5hUserPolicy, error) {
 	policy, ok := c.policies[userID]

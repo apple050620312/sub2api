@@ -19,6 +19,9 @@ const (
 	dynamic5hMeterBucketBase = "dynamic_5h_pressure:meter:"
 	dynamic5hUserMeterBase   = "dynamic_5h_pressure:user_meter:"
 	dynamic5hPolicyBase      = "dynamic_5h_pressure:policy:"
+	dynamic5hPendingUsersKey = "dynamic_5h_pressure:pending_users"
+	dynamic5hPendingBase     = "dynamic_5h_pressure:pending:"
+	dynamic5hReservationBase = "dynamic_5h_pressure:reservation:"
 )
 
 type dynamic5hPressureCache struct {
@@ -70,12 +73,18 @@ func (c *dynamic5hPressureCache) TouchActiveUser(ctx context.Context, userID int
 }
 
 func (c *dynamic5hPressureCache) ActiveUserIDs(ctx context.Context, cutoff time.Time) ([]string, error) {
-	return c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+	active, err := c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
 		Key:     dynamic5hActiveUsersKey,
 		Start:   strconv.FormatInt(cutoff.Unix(), 10),
 		Stop:    "+inf",
 		ByScore: true,
 	}).Result()
+	if err != nil { return nil, err }
+	pending, err := c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: dynamic5hPendingUsersKey, Start: strconv.FormatInt(cutoff.Add(15*time.Minute).Unix(), 10), Stop: "+inf", ByScore: true}).Result()
+	if err != nil { return nil, err }
+	seen := make(map[string]struct{}, len(active)+len(pending)); result := make([]string, 0, len(active)+len(pending))
+	for _, id := range append(active, pending...) { if _, ok := seen[id]; !ok { seen[id]=struct{}{}; result=append(result,id) } }
+	return result,nil
 }
 
 func (c *dynamic5hPressureCache) RollingUserIDs(ctx context.Context, cutoff time.Time) ([]string, error) {
@@ -120,6 +129,25 @@ func (c *dynamic5hPressureCache) UserMeterValues(ctx context.Context, userID, la
 		keys = append(keys, dynamic5hUserMeterKey(userID, latestBucket-int64(i)))
 	}
 	return c.floatValues(ctx, keys)
+}
+
+func (c *dynamic5hPressureCache) ReserveUserUsage(ctx context.Context, userID int64, token string, observed, limit, amount float64, now time.Time, ttl time.Duration) (bool, float64, error) {
+	keys := []string{fmt.Sprintf("%s%d", dynamic5hPendingBase,userID), dynamic5hReservationBase+token, dynamic5hPendingUsersKey}
+	result, err := reserveDynamic5hUsageScript.Run(ctx,c.rdb,keys,observed,limit,amount,int64(ttl/time.Millisecond),strconv.FormatInt(userID,10),now.Add(ttl).Unix()).Slice()
+	if err != nil { return false,0,err }
+	allowed, _ := result[0].(int64); pending, _ := strconv.ParseFloat(fmt.Sprint(result[1]),64)
+	return allowed == 1,pending,nil
+}
+
+func (c *dynamic5hPressureCache) SettleUserReservation(ctx context.Context, userID int64, token string) error {
+	_, err := settleDynamic5hUsageScript.Run(ctx,c.rdb,[]string{fmt.Sprintf("%s%d",dynamic5hPendingBase,userID),dynamic5hReservationBase+token}).Result()
+	return err
+}
+
+func (c *dynamic5hPressureCache) PendingUserUsage(ctx context.Context, userID int64) (float64,error) {
+	value, err := c.rdb.Get(ctx,fmt.Sprintf("%s%d",dynamic5hPendingBase,userID)).Float64()
+	if err == redis.Nil { return 0,nil }
+	return value,err
 }
 
 func (c *dynamic5hPressureCache) floatValues(ctx context.Context, keys []string) ([]float64, error) {
@@ -170,4 +198,28 @@ if redis.call('GET', KEYS[1]) == ARGV[1] then
   return redis.call('DEL', KEYS[1])
 end
 return 0
+`)
+
+var reserveDynamic5hUsageScript = redis.NewScript(`
+if redis.call('EXISTS', KEYS[2]) == 1 then
+  return {1, tonumber(redis.call('GET', KEYS[1]) or '0')}
+end
+local pending = tonumber(redis.call('GET', KEYS[1]) or '0')
+if tonumber(ARGV[1]) + pending + tonumber(ARGV[3]) > tonumber(ARGV[2]) then
+  return {0, pending}
+end
+pending = redis.call('INCRBYFLOAT', KEYS[1], ARGV[3])
+redis.call('PEXPIRE', KEYS[1], ARGV[4])
+redis.call('SET', KEYS[2], ARGV[3], 'PX', ARGV[4])
+redis.call('ZADD', KEYS[3], ARGV[6], ARGV[5])
+return {1, pending}
+`)
+
+var settleDynamic5hUsageScript = redis.NewScript(`
+local amount = redis.call('GET', KEYS[2])
+if not amount then return 0 end
+local pending = tonumber(redis.call('GET', KEYS[1]) or '0') - tonumber(amount)
+if pending > 0 then redis.call('SET', KEYS[1], pending, 'KEEPTTL') else redis.call('DEL', KEYS[1]) end
+redis.call('DEL', KEYS[2])
+return 1
 `)

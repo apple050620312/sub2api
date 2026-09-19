@@ -84,6 +84,15 @@ export default {
     rulePeak: 'When resources are tight, users above their dynamic fair share are limited first, while lighter users can continue.',
     ruleDynamic: 'Fair share changes with effective accounts and active users; it is not a fixed dollar or token quota.',
     ruleRecover: 'Only new requests are limited. Successful usage is not clawed back, and the rolling five-hour window recovers over time.',
+    multiplier: 'Current extra allowance multiplier: {value}x',
+    exempt: 'Your account is currently exempt from peak enforcement',
+    pending: 'In-flight requests reserve {value}%',
+    warning: {
+      normal: 'Current usage is within your fair share.',
+      warning: 'More than 80% of your fair share has been used.',
+      borrowed: 'Usage is above fair share; borrowing remains available outside peak periods.',
+      limited: 'Peak protection is active and new requests wait for usage to recover.'
+    },
     now: 'Now',
     refresh: 'Refresh'
   },

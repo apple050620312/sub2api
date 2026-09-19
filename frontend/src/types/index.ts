@@ -1923,6 +1923,11 @@ export interface Dynamic5hPressureStatus {
   projected_demand: number
   pool_capacity: number
   evaluated_at: string
+  capacity_recovering_next_hour: number
+  excluded_account_count: number
+  next_reset_at?: string
+  peak_threshold: number
+  normal_threshold: number
 }
 
 export interface Dynamic5hUserStatus {
@@ -1934,6 +1939,10 @@ export interface Dynamic5hUserStatus {
   remaining_percent: number
   window_started_at?: string
   recover_at?: string
+  multiplier: number
+  exempt: boolean
+  warning_level: 'normal' | 'warning' | 'borrowed' | 'limited'
+  pending_percent: number
 }
 
 export interface Dynamic5hAdminUserStatus extends Dynamic5hUserStatus {
@@ -1947,6 +1956,30 @@ export interface Dynamic5hAdminUserStatus extends Dynamic5hUserStatus {
 export interface Dynamic5hAdminOverview {
   pool: Dynamic5hPressureStatus
   users: Dynamic5hAdminUserStatus[]
+  accounts: Array<{
+    account_id: number
+    name: string
+    platform: string
+    included: boolean
+    reason: string
+    five_hour_used_percent?: number
+    five_hour_reset_at?: string
+    seven_day_used_percent?: number
+    seven_day_reset_at?: string
+    rejoin_at?: string
+  }>
+  audit_logs: Array<{
+    id: number
+    user_id: number
+    actor_user_id?: number
+    actor_email: string
+    action: string
+    reason: string
+    before_usage?: number
+    after_usage?: number
+    created_at: string
+  }>
+  guaranteed_capacity_ratio: number
 }
 
 export interface UsageStatsResponse {

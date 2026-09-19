@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 type Dynamic5hPressureState string
@@ -53,6 +54,11 @@ type Dynamic5hPressureStatus struct {
 	PoolCapacity      float64                `json:"pool_capacity"`
 	Episode           int64                  `json:"episode"`
 	EvaluatedAt       time.Time              `json:"evaluated_at"`
+	CapacityRecoveringNextHour float64        `json:"capacity_recovering_next_hour"`
+	ExcludedAccountCount int                  `json:"excluded_account_count"`
+	NextResetAt       *time.Time              `json:"next_reset_at,omitempty"`
+	PeakThreshold     float64                 `json:"peak_threshold"`
+	NormalThreshold   float64                 `json:"normal_threshold"`
 }
 
 // Dynamic5hUserStatus deliberately exposes only OpenAI-style percentages and
@@ -66,6 +72,10 @@ type Dynamic5hUserStatus struct {
 	RemainingPercent float64                `json:"remaining_percent"`
 	WindowStartedAt  *time.Time             `json:"window_started_at,omitempty"`
 	RecoverAt        *time.Time             `json:"recover_at,omitempty"`
+	Multiplier       float64                `json:"multiplier"`
+	Exempt           bool                   `json:"exempt"`
+	WarningLevel     string                 `json:"warning_level"`
+	PendingPercent   float64                `json:"pending_percent"`
 }
 
 type Dynamic5hAdminUserStatus struct {
@@ -82,6 +92,40 @@ type Dynamic5hUserPolicy struct {
 	Multiplier float64 `json:"multiplier"`
 }
 
+type Dynamic5hAuditLog struct {
+	ID            int64                 `json:"id"`
+	UserID        int64                 `json:"user_id"`
+	ActorUserID   *int64                `json:"actor_user_id,omitempty"`
+	ActorEmail    string                `json:"actor_email"`
+	Action        string                `json:"action"`
+	Reason        string                `json:"reason"`
+	BeforeUsage   *float64              `json:"before_usage,omitempty"`
+	AfterUsage    *float64              `json:"after_usage,omitempty"`
+	OldPolicy     *Dynamic5hUserPolicy  `json:"old_policy,omitempty"`
+	NewPolicy     *Dynamic5hUserPolicy  `json:"new_policy,omitempty"`
+	CreatedAt     time.Time              `json:"created_at"`
+}
+
+type Dynamic5hPolicyRepository interface {
+	GetUserPolicy(context.Context, int64) (Dynamic5hUserPolicy, bool, error)
+	UpsertUserPolicy(context.Context, int64, Dynamic5hUserPolicy, int64, string) error
+	RecordUsageReset(context.Context, int64, int64, string, float64, float64) error
+	ListAuditLogs(context.Context, int) ([]Dynamic5hAuditLog, error)
+}
+
+type Dynamic5hAccountDiagnostic struct {
+	AccountID     int64      `json:"account_id"`
+	Name          string     `json:"name"`
+	Platform      string     `json:"platform"`
+	Included      bool       `json:"included"`
+	Reason        string     `json:"reason"`
+	FiveHourUsed  *float64   `json:"five_hour_used_percent,omitempty"`
+	FiveHourReset *time.Time `json:"five_hour_reset_at,omitempty"`
+	SevenDayUsed  *float64   `json:"seven_day_used_percent,omitempty"`
+	SevenDayReset *time.Time `json:"seven_day_reset_at,omitempty"`
+	RejoinAt      *time.Time `json:"rejoin_at,omitempty"`
+}
+
 type Dynamic5hPolicyCache interface {
 	LoadUserPolicy(context.Context, int64) (Dynamic5hUserPolicy, error)
 	StoreUserPolicy(context.Context, int64, Dynamic5hUserPolicy) error
@@ -91,6 +135,9 @@ type Dynamic5hPolicyCache interface {
 type Dynamic5hAdminOverview struct {
 	Pool  Dynamic5hPressureStatus    `json:"pool"`
 	Users []Dynamic5hAdminUserStatus `json:"users"`
+	Accounts []Dynamic5hAccountDiagnostic `json:"accounts"`
+	AuditLogs []Dynamic5hAuditLog `json:"audit_logs"`
+	GuaranteedCapacityRatio float64 `json:"guaranteed_capacity_ratio"`
 }
 
 type dynamic5hAccountWindow struct {
@@ -111,11 +158,15 @@ type Dynamic5hPressureCache interface {
 	RecordUsage(ctx context.Context, userID, bucket int64, now, cutoff time.Time, amount float64, ttl time.Duration) error
 	MeterValues(ctx context.Context, latestBucket int64, count int) ([]float64, error)
 	UserMeterValues(ctx context.Context, userID, latestBucket int64, count int) ([]float64, error)
+	ReserveUserUsage(ctx context.Context, userID int64, token string, observed, limit, amount float64, now time.Time, ttl time.Duration) (bool, float64, error)
+	SettleUserReservation(ctx context.Context, userID int64, token string) error
+	PendingUserUsage(ctx context.Context, userID int64) (float64, error)
 }
 
 type Dynamic5hPressureService struct {
 	accountRepo AccountRepository
 	userRepo UserRepository
+	policyRepo Dynamic5hPolicyRepository
 	cache       Dynamic5hPressureCache
 	cfg         config.Dynamic5hPressureConfig
 
@@ -136,6 +187,12 @@ func NewDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hP
 	if len(userRepo) > 0 { s.userRepo = userRepo[0] }
 	s.status = Dynamic5hPressureStatus{Enabled: pressureCfg.Enabled, State: Dynamic5hPressureNormal}
 	return s
+}
+
+func ProvideDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hPressureCache, cfg *config.Config, userRepo UserRepository, policyRepo Dynamic5hPolicyRepository) *Dynamic5hPressureService {
+	svc := NewDynamic5hPressureService(accountRepo, cache, cfg, userRepo)
+	svc.policyRepo = policyRepo
+	return svc
 }
 
 func normalizeDynamic5hPressureConfig(c config.Dynamic5hPressureConfig) config.Dynamic5hPressureConfig {
@@ -202,9 +259,13 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 	}
 	now := s.now().UTC()
 	windows := make([]dynamic5hAccountWindow, 0, len(accounts))
+	var recoveringNextHour float64
+	var nextResetAt *time.Time
 	for i := range accounts {
 		if w, ok := dynamic5hWindowForAccount(&accounts[i], now); ok {
 			windows = append(windows, w)
+			if w.resetAt.Sub(now) <= time.Hour { recoveringNextHour += w.used }
+			if nextResetAt == nil || w.resetAt.Before(*nextResetAt) { reset := w.resetAt; nextResetAt=&reset }
 		}
 	}
 	raw, remaining, burnPerHour, projected := calculateDynamic5hPressure(windows, now)
@@ -235,6 +296,8 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 		AccountCount: len(windows), ActiveUserCount: activeUsers, RemainingCapacity: remaining,
 		BurnRatePerHour: burnPerHour, ProjectedDemand: projected, PoolCapacity: poolMeterUnits,
 		Episode: episode, EvaluatedAt: now,
+		CapacityRecoveringNextHour: recoveringNextHour, ExcludedAccountCount: len(accounts)-len(windows), NextResetAt: nextResetAt,
+		PeakThreshold: s.cfg.PeakThreshold, NormalThreshold: s.cfg.NormalThreshold,
 	}
 	s.storeStatus(ctx, status)
 	return status, nil
@@ -258,7 +321,7 @@ func calculateDynamic5hPressure(windows []dynamic5hAccountWindow, now time.Time)
 		postResetCapacity := math.Max(0, (dynamic5hWindow.Hours()-remainingHours)/dynamic5hWindow.Hours())
 		effectiveRemaining += (1 - u) + postResetCapacity
 		burnPerHour += accountBurn
-		projected += accountBurn * remainingHours
+		projected += accountBurn * dynamic5hWindow.Hours()
 	}
 	if effectiveRemaining <= 0 {
 		if projected > 0 {
@@ -388,7 +451,7 @@ func (s *Dynamic5hPressureService) userStatus(ctx context.Context, userID int64,
 	if !status.CalibrationReady || userID <= 0 || s.cache == nil {
 		return result
 	}
-	fairShare, ok := s.currentFairShare(ctx, status, now)
+	fairShare, ok := s.currentFairShareForUser(ctx, status, now, userID)
 	if !ok {
 		return result
 	}
@@ -399,12 +462,20 @@ func (s *Dynamic5hPressureService) userStatusWithFairShare(ctx context.Context, 
 	result := Dynamic5hUserStatus{Enabled: status.Enabled, State: status.State}
 	policy := s.userPolicy(ctx, userID)
 	share := fairShare * policy.Multiplier
-	if policy.Exempt { share = math.Inf(1) }
 	usage, recoverAt := s.rollingUserUsage(ctx, userID, now, share)
+	pending := s.pendingUserUsage(ctx, userID)
 	result.LimitActive = status.State == Dynamic5hPressurePeak && !policy.Exempt
-	result.CurrentlyLimited = result.LimitActive && usage >= share
+	result.CurrentlyLimited = result.LimitActive && usage+pending >= share
 	result.UsagePercent = math.Max(0, 100*usage/share)
 	result.RemainingPercent = math.Max(0, 100-result.UsagePercent)
+	result.Multiplier, result.Exempt = policy.Multiplier, policy.Exempt
+	result.PendingPercent = math.Max(0, 100*pending/share)
+	switch {
+	case result.CurrentlyLimited: result.WarningLevel = "limited"
+	case result.UsagePercent >= 100: result.WarningLevel = "borrowed"
+	case result.UsagePercent >= 80: result.WarningLevel = "warning"
+	default: result.WarningLevel = "normal"
+	}
 	started := now.Add(-dynamic5hWindow)
 	result.WindowStartedAt = &started
 	if !recoverAt.IsZero() {
@@ -415,7 +486,13 @@ func (s *Dynamic5hPressureService) userStatusWithFairShare(ctx context.Context, 
 
 func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hAdminOverview {
 	status := s.AdminStatus(ctx, true)
-	overview := Dynamic5hAdminOverview{Pool: status, Users: []Dynamic5hAdminUserStatus{}}
+	overview := Dynamic5hAdminOverview{Pool: status, Users: []Dynamic5hAdminUserStatus{}, Accounts: []Dynamic5hAccountDiagnostic{}, AuditLogs: []Dynamic5hAuditLog{}}
+	if s.accountRepo != nil {
+		if accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, ""); err == nil {
+			for i := range accounts { overview.Accounts = append(overview.Accounts, dynamic5hAccountDiagnostic(&accounts[i], s.now().UTC())) }
+		}
+	}
+	if s.policyRepo != nil { if logs, err := s.policyRepo.ListAuditLogs(ctx, 50); err == nil { overview.AuditLogs = logs } }
 	if !status.Enabled || !status.CalibrationReady || s.cache == nil {
 		return overview
 	}
@@ -428,9 +505,18 @@ func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hA
 	}
 	active := make(map[string]bool, len(activeUserIDs))
 	for _, rawID := range activeUserIDs { active[rawID] = true }
-	protectedUsers := len(activeUserIDs)
+	protectedUsers := 0
+	guaranteed := 0.0
+	for _, rawID := range activeUserIDs {
+		id, err := strconv.ParseInt(rawID, 10, 64); if err != nil { continue }
+		policy := s.userPolicy(ctx, id)
+		if policy.Exempt { continue }
+		protectedUsers++
+		guaranteed += policy.Multiplier
+	}
 	if protectedUsers == 0 { protectedUsers = 1 }
 	fairShare := status.PoolCapacity / float64(protectedUsers)
+	overview.GuaranteedCapacityRatio = guaranteed / float64(protectedUsers)
 	for _, rawID := range rollingUserIDs {
 		userID, err := strconv.ParseInt(rawID, 10, 64)
 		if err != nil || userID <= 0 {
@@ -450,6 +536,36 @@ func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hA
 	return overview
 }
 
+func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagnostic {
+	d := Dynamic5hAccountDiagnostic{AccountID: a.ID, Name: a.Name, Platform: a.Platform}
+	platform := strings.ToLower(strings.TrimSpace(a.Platform))
+	var fiveUsedKey, fiveResetKey, sevenUsedKey, sevenResetKey string
+	switch platform {
+	case PlatformOpenAI: fiveUsedKey,fiveResetKey,sevenUsedKey,sevenResetKey = "codex_5h_used_percent","codex_5h_reset_at","codex_7d_used_percent","codex_7d_reset_at"
+	case PlatformAnthropic: fiveUsedKey,sevenUsedKey,sevenResetKey = "session_window_utilization","passive_usage_7d_utilization","passive_usage_7d_reset"
+	case PlatformKimi,PlatformZhipu,PlatformMiniMax,PlatformOpenCodeGo: fiveUsedKey,fiveResetKey,sevenUsedKey,sevenResetKey = platform+"_5h_used_percent",platform+"_5h_reset_at",platform+"_7d_used_percent",platform+"_7d_reset_at"
+	default: d.Reason="unsupported_platform"; return d
+	}
+	if value,ok := resolveAccountExtraNumber(a.Extra,fiveUsedKey); ok { if platform==PlatformAnthropic && value<=1 { value*=100 }; d.FiveHourUsed=&value }
+	if platform==PlatformAnthropic { d.FiveHourReset=a.SessionWindowEnd } else { d.FiveHourReset=parseSchedulingResetAt(a.Extra[fiveResetKey]) }
+	if value,ok := resolveAccountExtraNumber(a.Extra,sevenUsedKey); ok { if platform==PlatformAnthropic && value<=1 { value*=100 }; d.SevenDayUsed=&value }
+	d.SevenDayReset=parseSchedulingResetAt(a.Extra[sevenResetKey])
+	switch {
+	case !a.IsActive(): d.Reason="disabled"
+	case !a.Schedulable: d.Reason="unschedulable"
+	case a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt): d.Reason="credential_expired"
+	case a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt): d.Reason="rate_limited"; d.RejoinAt=a.RateLimitResetAt
+	case a.OverloadUntil != nil && now.Before(*a.OverloadUntil): d.Reason="overloaded"; d.RejoinAt=a.OverloadUntil
+	case a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil): d.Reason="temporarily_unavailable"; d.RejoinAt=a.TempUnschedulableUntil
+	case d.SevenDayUsed != nil && *d.SevenDayUsed >= 100 && (d.SevenDayReset==nil || d.SevenDayReset.After(now)): d.Reason="seven_day_exhausted"; d.RejoinAt=d.SevenDayReset
+	case platform==PlatformOpenAI && !openAICodexSnapshotIdentityTrusted(a): d.Reason="identity_mismatch"
+	case d.FiveHourUsed==nil || d.FiveHourReset==nil: d.Reason="snapshot_missing"
+	case !d.FiveHourReset.After(now): d.Reason="snapshot_expired"; d.RejoinAt=d.FiveHourReset
+	default: d.Included=true; d.Reason="included"
+	}
+	return d
+}
+
 func (s *Dynamic5hPressureService) CheckUser(ctx context.Context, userID int64, platform ...string) error {
 	if len(platform) > 0 && platform[0] != "" && !dynamic5hPlatformSupported(platform[0]) {
 		return nil
@@ -459,16 +575,21 @@ func (s *Dynamic5hPressureService) CheckUser(ctx context.Context, userID int64, 
 		return nil
 	}
 	now := s.now().UTC()
-	s.touchActiveUser(ctx, userID, now)
 	policy := s.userPolicy(ctx, userID)
 	if policy.Exempt { return nil }
-	fairShare, ok := s.currentFairShare(ctx, status, now)
+	fairShare, ok := s.currentFairShareForUser(ctx, status, now, userID)
 	if !ok {
 		return nil
 	}
 	fairShare *= policy.Multiplier
 	usage, recoverAt := s.rollingUserUsage(ctx, userID, now, fairShare)
-	if usage < fairShare {
+	token, _ := ctx.Value(ctxkey.RequestID).(string)
+	reservation := math.Max(1, fairShare*0.01)
+	if token != "" {
+		allowed, _, err := s.cache.ReserveUserUsage(ctx, userID, token, usage, fairShare, reservation, now, 2*time.Minute)
+		if err != nil { return nil }
+		if allowed { s.releaseReservationWhenRequestEnds(ctx, userID, token); return nil }
+	} else if usage+s.pendingUserUsage(ctx, userID) < fairShare {
 		return nil
 	}
 	return ErrDynamic5hPressureLimitExceeded.WithMetadata(map[string]string{
@@ -478,27 +599,50 @@ func (s *Dynamic5hPressureService) CheckUser(ctx context.Context, userID int64, 
 	})
 }
 
+func (s *Dynamic5hPressureService) releaseReservationWhenRequestEnds(ctx context.Context, userID int64, token string) {
+	if ctx == nil || ctx.Done() == nil || token == "" { return }
+	go func() {
+		timer := time.NewTimer(2*time.Minute); defer timer.Stop()
+		select { case <-ctx.Done(): case <-timer.C: }
+		releaseCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second); defer cancel()
+		_ = s.cache.SettleUserReservation(releaseCtx, userID, token)
+	}()
+}
+
 func (s *Dynamic5hPressureService) userPolicy(ctx context.Context, userID int64) Dynamic5hUserPolicy {
 	p := Dynamic5hUserPolicy{Multiplier: 1}
-	if c, ok := s.cache.(Dynamic5hPolicyCache); ok {
+	if s.policyRepo != nil {
+		if loaded, found, err := s.policyRepo.GetUserPolicy(ctx, userID); err == nil && found { p = loaded }
+	} else if c, ok := s.cache.(Dynamic5hPolicyCache); ok {
 		if loaded, err := c.LoadUserPolicy(ctx, userID); err == nil { p = loaded }
 	}
 	if p.Multiplier <= 0 || math.IsNaN(p.Multiplier) || math.IsInf(p.Multiplier, 0) { p.Multiplier = 1 }
 	return p
 }
 
-func (s *Dynamic5hPressureService) SetUserPolicy(ctx context.Context, userID int64, policy Dynamic5hUserPolicy) error {
+func (s *Dynamic5hPressureService) SetUserPolicy(ctx context.Context, userID int64, policy Dynamic5hUserPolicy, actorAndReason ...any) error {
 	if userID <= 0 { return fmt.Errorf("invalid user id") }
 	if policy.Multiplier <= 0 || math.IsNaN(policy.Multiplier) || math.IsInf(policy.Multiplier, 0) { return fmt.Errorf("multiplier must be a positive finite number") }
+	actorID, reason := int64(0), ""
+	if len(actorAndReason) > 0 { actorID, _ = actorAndReason[0].(int64) }
+	if len(actorAndReason) > 1 { reason, _ = actorAndReason[1].(string) }
+	if s.policyRepo != nil { return s.policyRepo.UpsertUserPolicy(ctx, userID, policy, actorID, strings.TrimSpace(reason)) }
 	c, ok := s.cache.(Dynamic5hPolicyCache)
 	if !ok { return fmt.Errorf("dynamic 5h policy cache unavailable") }
 	return c.StoreUserPolicy(ctx, userID, policy)
 }
 
-func (s *Dynamic5hPressureService) ResetUserUsage(ctx context.Context, userID int64) error {
+func (s *Dynamic5hPressureService) ResetUserUsage(ctx context.Context, userID int64, actorAndReason ...any) error {
 	c, ok := s.cache.(Dynamic5hPolicyCache)
 	if !ok { return fmt.Errorf("dynamic 5h policy cache unavailable") }
-	return c.ResetUserUsage(ctx, userID)
+	now := s.now().UTC()
+	before, _ := s.rollingUserUsage(ctx, userID, now, math.MaxFloat64)
+	if err := c.ResetUserUsage(ctx, userID); err != nil { return err }
+	actorID, reason := int64(0), ""
+	if len(actorAndReason) > 0 { actorID, _ = actorAndReason[0].(int64) }
+	if len(actorAndReason) > 1 { reason, _ = actorAndReason[1].(string) }
+	if s.policyRepo != nil { return s.policyRepo.RecordUsageReset(ctx, userID, actorID, strings.TrimSpace(reason), before, 0) }
+	return nil
 }
 
 // RecordUsage maintains calibration, active population, and each user's rolling
@@ -508,6 +652,7 @@ func (s *Dynamic5hPressureService) RecordUsage(ctx context.Context, userID int64
 		return
 	}
 	now := s.now().UTC()
+	if token, _ := ctx.Value(ctxkey.RequestID).(string); token != "" { _ = s.cache.SettleUserReservation(ctx, userID, token) }
 	bucket := now.Unix() / int64(dynamic5hMeterBucket/time.Second)
 	if err := s.cache.RecordUsage(ctx, userID, bucket, now, now.Add(-dynamic5hActiveLease), meterUnits, dynamic5hRedisTTL); err != nil {
 		slog.Warn("dynamic 5h pressure calibration update failed; failing open", "error", err)
@@ -589,14 +734,29 @@ func (s *Dynamic5hPressureService) recentMeterRate(ctx context.Context, now time
 }
 
 func (s *Dynamic5hPressureService) currentFairShare(ctx context.Context, status Dynamic5hPressureStatus, now time.Time) (float64, bool) {
+	return s.currentFairShareForUser(ctx, status, now, 0)
+}
+
+func (s *Dynamic5hPressureService) currentFairShareForUser(ctx context.Context, status Dynamic5hPressureStatus, now time.Time, candidateID int64) (float64, bool) {
 	if s.cache == nil || !status.CalibrationReady || status.PoolCapacity <= 0 {
 		return 0, false
 	}
 	users := s.activeUserIDs(ctx, now)
-	if len(users) == 0 {
-		return 0, false
+	count, found := 0, false
+	for _, rawID := range users {
+		id, err := strconv.ParseInt(rawID, 10, 64); if err != nil { continue }
+		if id == candidateID { found = true }
+		if !s.userPolicy(ctx, id).Exempt { count++ }
 	}
-	return status.PoolCapacity / float64(len(users)), true
+	if candidateID > 0 && !found && !s.userPolicy(ctx, candidateID).Exempt { count++ }
+	if count == 0 { count = 1 }
+	return status.PoolCapacity / float64(count), true
+}
+
+func (s *Dynamic5hPressureService) pendingUserUsage(ctx context.Context, userID int64) float64 {
+	if s.cache == nil { return 0 }
+	value, err := s.cache.PendingUserUsage(ctx, userID); if err != nil { return 0 }
+	return math.Max(0, value)
 }
 
 // rollingUserUsage returns the last-five-hour usage and the first bucket expiry

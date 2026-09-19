@@ -96,6 +96,11 @@ export default {
       effectiveAccounts: '有效账号',
       activeUsers: '近 15 分钟活跃用户',
       enforcement: '公平份额限制',
+      recoveringNextHour: '未来 1 小时恢复容量',
+      excludedAccounts: '排除账号',
+      nextReset: '最近 5h 重置',
+      thresholds: '进入 / 退出门槛',
+      states: { normal: '正常', peak: '高峰保护' },
       on: '已启用',
       off: '未启用',
       users: '活跃用户公平份额',
@@ -113,7 +118,17 @@ export default {
       policy: '策略',
       multiplier: '倍率',
       exempt: '豁免',
-      resetUsage: '重置用量'
+      resetUsage: '重置用量',
+      reason: '操作原因',
+      resetConfirm: '确认重置该用户近 5 小时用量？此操作会写入审计记录。',
+      overcommitted: '当前额外保障额度合计为基础池的 {value}%，高峰时可能出现保障额度超配。',
+      accountDiagnostics: '有效账号诊断',
+      account: '账号',
+      rejoin: '预计重新加入',
+      audit: '操作审计',
+      noAudit: '暂无操作记录',
+      auditActions: { policy_update: '策略修改', usage_reset: '用量重置' },
+      accountReasons: { included: '已纳入', unsupported_platform: '平台不支持', disabled: '已停用', unschedulable: '不可调度', credential_expired: '认证或账号已过期', rate_limited: '限流中', overloaded: '过载中', temporarily_unavailable: '暂时不可用', seven_day_exhausted: '7d 已用尽', identity_mismatch: '账号身份不匹配', snapshot_missing: '用量快照缺失', snapshot_expired: '用量快照已过期' }
     },
 
     backup: {

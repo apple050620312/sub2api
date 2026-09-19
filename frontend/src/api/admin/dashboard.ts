@@ -56,13 +56,13 @@ export async function getDynamic5hPressureOverview(): Promise<Dynamic5hAdminOver
   return data
 }
 
-export async function setDynamic5hUserPolicy(userId: number, policy: { exempt: boolean; multiplier: number }) {
+export async function setDynamic5hUserPolicy(userId: number, policy: { exempt: boolean; multiplier: number; reason: string }) {
   const { data } = await apiClient.put(`/admin/dashboard/5h-pressure/users/${userId}/policy`, policy)
   return data
 }
 
-export async function resetDynamic5hUser(userId: number) {
-  const { data } = await apiClient.post(`/admin/dashboard/5h-pressure/users/${userId}/reset`)
+export async function resetDynamic5hUser(userId: number, reason: string) {
+  const { data } = await apiClient.post(`/admin/dashboard/5h-pressure/users/${userId}/reset`, { reason })
   return data
 }
 

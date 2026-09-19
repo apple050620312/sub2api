@@ -24,7 +24,8 @@ type DashboardHandler struct {
 	startTime          time.Time // Server start time for uptime calculation
 }
 
-type Dynamic5hPolicyRequest struct { Exempt bool `json:"exempt"`; Multiplier float64 `json:"multiplier"` }
+type Dynamic5hPolicyRequest struct { Exempt bool `json:"exempt"`; Multiplier float64 `json:"multiplier"`; Reason string `json:"reason"` }
+type Dynamic5hResetRequest struct { Reason string `json:"reason"` }
 
 // NewDashboardHandler creates a new admin dashboard handler
 func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService) *DashboardHandler {
@@ -66,14 +67,17 @@ func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil { response.BadRequest(c, "Invalid policy"); return }
 	if req.Multiplier == 0 { req.Multiplier = 1 }
 	if req.Multiplier <= 0 || math.IsNaN(req.Multiplier) || math.IsInf(req.Multiplier, 0) { response.BadRequest(c, "Multiplier must be a positive number"); return }
-	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}); err != nil { response.Error(c, 500, err.Error()); return }
+	if strings.TrimSpace(req.Reason) == "" { response.BadRequest(c, "Reason is required"); return }
+	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}, getAdminIDFromContext(c), req.Reason); err != nil { response.Error(c, 500, err.Error()); return }
 	response.Success(c, gin.H{"user_id": userID, "exempt": req.Exempt, "multiplier": req.Multiplier})
 }
 
 func (h *DashboardHandler) ResetDynamic5hUser(c *gin.Context) {
 	if h.dynamic5hPressure == nil { response.InternalError(c, "Dynamic 5h service unavailable"); return }
 	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64); if err != nil { response.BadRequest(c, "Invalid user ID"); return }
-	if err := h.dynamic5hPressure.ResetUserUsage(c.Request.Context(), userID); err != nil { response.Error(c, 500, err.Error()); return }
+	var req Dynamic5hResetRequest
+	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Reason) == "" { response.BadRequest(c, "Reason is required"); return }
+	if err := h.dynamic5hPressure.ResetUserUsage(c.Request.Context(), userID, getAdminIDFromContext(c), req.Reason); err != nil { response.Error(c, 500, err.Error()); return }
 	response.Success(c, gin.H{"user_id": userID, "reset": true})
 }
 
