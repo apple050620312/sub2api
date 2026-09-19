@@ -58,7 +58,7 @@
           <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
             <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</h2></div>
             <div v-if="overview.audit_logs.length === 0" class="p-5 text-sm text-gray-500">{{ t('admin.pressure5hPage.noAudit') }}</div>
-            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-2 px-5 py-3 text-sm md:grid-cols-[170px_1fr_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>{{ log.actor_email || `ID ${log.actor_user_id || '-'}` }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · User {{ log.user_id }}</span><span class="text-gray-500">{{ log.reason }}</span></div></div>
+            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-2 px-5 py-3 text-sm md:grid-cols-[170px_1fr_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>{{ log.actor_email || `ID ${log.actor_user_id || '-'}` }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · 用户 {{ log.user_id }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span><span class="text-gray-500">{{ log.reason }}</span></div></div>
           </section>
         </template>
       </template>
@@ -94,6 +94,9 @@ const metrics = computed(() => overview.value ? [
 ] : [])
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
 const formatWindow = (used?: number, reset?: string) => used === undefined ? '-' : `${used.toFixed(1)}% · ${formatTime(reset)}`
+const auditChange = (log: Dynamic5hAdminOverview['audit_logs'][number]) => log.action === 'usage_reset'
+  ? `${(log.before_usage || 0).toFixed(2)} -> ${(log.after_usage || 0).toFixed(2)}`
+  : `${log.old_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.old_policy?.multiplier || 1}x`} -> ${log.new_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.new_policy?.multiplier || 1}x`}`
 const load = async () => { loading.value = true; try { overview.value = await getDynamic5hPressureOverview() } finally { loading.value = false } }
 const updateMultiplier = async (user: Dynamic5hAdminUserStatus, event: Event) => {
   const multiplier = Number((event.target as HTMLInputElement).value)

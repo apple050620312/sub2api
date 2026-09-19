@@ -1112,7 +1112,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		status := c.Writer.Status()
 		body := w.capturedBytes()
-	parsed := parseOpsErrorResponse(body)
+		parsed := parseOpsErrorResponse(body)
 		if !parsed.StreamFailure {
 			if terminal, ok := w.capturedTerminalError(); ok {
 				parsed = terminal
@@ -1121,7 +1121,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		if isDynamic5hPressureError(parsed) {
 			return
 		}
-	if status < 400 {
+		if status < 400 {
 			if parsed.StreamFailure {
 				status = inferStreamFailureStatus(c, parsed)
 			} else {

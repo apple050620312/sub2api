@@ -1977,6 +1977,8 @@ export interface Dynamic5hAdminOverview {
     reason: string
     before_usage?: number
     after_usage?: number
+    old_policy?: { exempt: boolean; multiplier: number }
+    new_policy?: { exempt: boolean; multiplier: number }
     created_at: string
   }>
   guaranteed_capacity_ratio: number
