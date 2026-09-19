@@ -79,12 +79,22 @@ func (c *dynamic5hPressureCache) ActiveUserIDs(ctx context.Context, cutoff time.
 		Stop:    "+inf",
 		ByScore: true,
 	}).Result()
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	pending, err := c.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{Key: dynamic5hPendingUsersKey, Start: strconv.FormatInt(cutoff.Add(15*time.Minute).Unix(), 10), Stop: "+inf", ByScore: true}).Result()
-	if err != nil { return nil, err }
-	seen := make(map[string]struct{}, len(active)+len(pending)); result := make([]string, 0, len(active)+len(pending))
-	for _, id := range append(active, pending...) { if _, ok := seen[id]; !ok { seen[id]=struct{}{}; result=append(result,id) } }
-	return result,nil
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(active)+len(pending))
+	result := make([]string, 0, len(active)+len(pending))
+	for _, id := range append(active, pending...) {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			result = append(result, id)
+		}
+	}
+	return result, nil
 }
 
 func (c *dynamic5hPressureCache) RollingUserIDs(ctx context.Context, cutoff time.Time) ([]string, error) {
@@ -132,22 +142,27 @@ func (c *dynamic5hPressureCache) UserMeterValues(ctx context.Context, userID, la
 }
 
 func (c *dynamic5hPressureCache) ReserveUserUsage(ctx context.Context, userID int64, token string, observed, limit, amount float64, now time.Time, ttl time.Duration) (bool, float64, error) {
-	keys := []string{fmt.Sprintf("%s%d", dynamic5hPendingBase,userID), dynamic5hReservationBase+token, dynamic5hPendingUsersKey}
-	result, err := reserveDynamic5hUsageScript.Run(ctx,c.rdb,keys,observed,limit,amount,int64(ttl/time.Millisecond),strconv.FormatInt(userID,10),now.Add(ttl).Unix()).Slice()
-	if err != nil { return false,0,err }
-	allowed, _ := result[0].(int64); pending, _ := strconv.ParseFloat(fmt.Sprint(result[1]),64)
-	return allowed == 1,pending,nil
+	keys := []string{fmt.Sprintf("%s%d", dynamic5hPendingBase, userID), dynamic5hReservationBase + token, dynamic5hPendingUsersKey}
+	result, err := reserveDynamic5hUsageScript.Run(ctx, c.rdb, keys, observed, limit, amount, int64(ttl/time.Millisecond), strconv.FormatInt(userID, 10), now.Add(ttl).Unix()).Slice()
+	if err != nil {
+		return false, 0, err
+	}
+	allowed, _ := result[0].(int64)
+	pending, _ := strconv.ParseFloat(fmt.Sprint(result[1]), 64)
+	return allowed == 1, pending, nil
 }
 
 func (c *dynamic5hPressureCache) SettleUserReservation(ctx context.Context, userID int64, token string) error {
-	_, err := settleDynamic5hUsageScript.Run(ctx,c.rdb,[]string{fmt.Sprintf("%s%d",dynamic5hPendingBase,userID),dynamic5hReservationBase+token}).Result()
+	_, err := settleDynamic5hUsageScript.Run(ctx, c.rdb, []string{fmt.Sprintf("%s%d", dynamic5hPendingBase, userID), dynamic5hReservationBase + token}).Result()
 	return err
 }
 
-func (c *dynamic5hPressureCache) PendingUserUsage(ctx context.Context, userID int64) (float64,error) {
-	value, err := c.rdb.Get(ctx,fmt.Sprintf("%s%d",dynamic5hPendingBase,userID)).Float64()
-	if err == redis.Nil { return 0,nil }
-	return value,err
+func (c *dynamic5hPressureCache) PendingUserUsage(ctx context.Context, userID int64) (float64, error) {
+	value, err := c.rdb.Get(ctx, fmt.Sprintf("%s%d", dynamic5hPendingBase, userID)).Float64()
+	if err == redis.Nil {
+		return 0, nil
+	}
+	return value, err
 }
 
 func (c *dynamic5hPressureCache) floatValues(ctx context.Context, keys []string) ([]float64, error) {
@@ -168,13 +183,25 @@ func (c *dynamic5hPressureCache) floatValues(ctx context.Context, keys []string)
 func (c *dynamic5hPressureCache) LoadUserPolicy(ctx context.Context, userID int64) (service.Dynamic5hUserPolicy, error) {
 	var p service.Dynamic5hUserPolicy
 	raw, err := c.rdb.Get(ctx, fmt.Sprintf("%s%d", dynamic5hPolicyBase, userID)).Bytes()
-	if err == redis.Nil { p.Multiplier = 1; return p, nil }
-	if err != nil { return p, err }
-	err = json.Unmarshal(raw, &p); if p.Multiplier <= 0 { p.Multiplier = 1 }; return p, err
+	if err == redis.Nil {
+		p.Multiplier = 1
+		return p, nil
+	}
+	if err != nil {
+		return p, err
+	}
+	err = json.Unmarshal(raw, &p)
+	if p.Multiplier <= 0 {
+		p.Multiplier = 1
+	}
+	return p, err
 }
 
 func (c *dynamic5hPressureCache) StoreUserPolicy(ctx context.Context, userID int64, policy service.Dynamic5hUserPolicy) error {
-	raw, err := json.Marshal(policy); if err != nil { return err }
+	raw, err := json.Marshal(policy)
+	if err != nil {
+		return err
+	}
 	return c.rdb.Set(ctx, fmt.Sprintf("%s%d", dynamic5hPolicyBase, userID), raw, 0).Err()
 }
 
@@ -182,10 +209,19 @@ func (c *dynamic5hPressureCache) ResetUserUsage(ctx context.Context, userID int6
 	pattern := fmt.Sprintf("%s%d:*", dynamic5hUserMeterBase, userID)
 	var cursor uint64
 	for {
-		keys, next, err := c.rdb.Scan(ctx, cursor, pattern, 500).Result(); if err != nil { return err }
-		if len(keys) > 0 { if err := c.rdb.Del(ctx, keys...).Err(); err != nil { return err } }
+		keys, next, err := c.rdb.Scan(ctx, cursor, pattern, 500).Result()
+		if err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
+				return err
+			}
+		}
 		cursor = next
-		if cursor == 0 { return c.rdb.ZRem(ctx, dynamic5hRollingUsersKey, strconv.FormatInt(userID, 10)).Err() }
+		if cursor == 0 {
+			return c.rdb.ZRem(ctx, dynamic5hRollingUsersKey, strconv.FormatInt(userID, 10)).Err()
+		}
 	}
 }
 
