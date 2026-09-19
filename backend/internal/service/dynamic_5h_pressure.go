@@ -239,6 +239,7 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 }
 
 func calculateDynamic5hPressure(windows []dynamic5hAccountWindow, now time.Time) (pressure, remaining, burnPerHour, projected float64) {
+	effectiveRemaining := 0.0
 	for _, w := range windows {
 		u := math.Max(0, math.Min(1, w.used))
 		remainingHours := math.Min(dynamic5hWindow.Hours(), w.resetAt.Sub(now).Hours())
@@ -248,16 +249,22 @@ func calculateDynamic5hPressure(windows []dynamic5hAccountWindow, now time.Time)
 		elapsed := math.Max(5.0/60.0, dynamic5hWindow.Hours()-remainingHours)
 		accountBurn := u / elapsed
 		remaining += 1 - u
+		// Forecast the capacity that becomes available again inside the same
+		// five-hour horizon. Without this term, an account at 100% with a
+		// reset in 30 minutes contributes zero capacity and makes pool pressure
+		// look artificially high until the next refresh after the reset.
+		postResetCapacity := math.Max(0, (dynamic5hWindow.Hours()-remainingHours)/dynamic5hWindow.Hours())
+		effectiveRemaining += (1 - u) + postResetCapacity
 		burnPerHour += accountBurn
 		projected += accountBurn * remainingHours
 	}
-	if remaining <= 0 {
+	if effectiveRemaining <= 0 {
 		if projected > 0 {
 			return 100, remaining, burnPerHour, projected
 		}
 		return 0, remaining, burnPerHour, projected
 	}
-	return projected / remaining, remaining, burnPerHour, projected
+	return projected / effectiveRemaining, remaining, burnPerHour, projected
 }
 
 func nextDynamic5hPressureState(previous Dynamic5hPressureState, pressure float64, available bool, c config.Dynamic5hPressureConfig) Dynamic5hPressureState {

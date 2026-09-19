@@ -131,6 +131,13 @@ func TestCalculateDynamic5hPressureAccountsWithDifferentResetTimes(t *testing.T)
 	require.Greater(t, far, 1.0)
 }
 
+func TestCalculateDynamic5hPressureCreditsCapacityAfterNearReset(t *testing.T) {
+	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	pressure, remaining, _, _ := calculateDynamic5hPressure([]dynamic5hAccountWindow{{used: 1, resetAt: now.Add(30 * time.Minute)}}, now)
+	require.Equal(t, 0.0, remaining, "the account is currently exhausted")
+	require.Less(t, pressure, 0.5, "a full account resetting soon should not keep the pool at extreme pressure")
+}
+
 func TestNextDynamic5hPressureStateUsesHysteresis(t *testing.T) {
 	cfg := dynamic5hTestConfig()
 	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressureNormal, 0.85, true, cfg))
