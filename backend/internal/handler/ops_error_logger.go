@@ -59,6 +59,7 @@ const (
 	opsCodeAPIKeyQueryDeprecated = "api_key_in_query_deprecated"
 	opsCodeGroupDeleted          = "GROUP_DELETED"
 	opsCodeGroupDisabled         = "GROUP_DISABLED"
+	opsCodeDynamic5hLimit        = "DYNAMIC_5H_PRESSURE_LIMIT_EXCEEDED"
 )
 
 const (
@@ -1111,13 +1112,16 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 		status := c.Writer.Status()
 		body := w.capturedBytes()
-		parsed := parseOpsErrorResponse(body)
+	parsed := parseOpsErrorResponse(body)
 		if !parsed.StreamFailure {
 			if terminal, ok := w.capturedTerminalError(); ok {
 				parsed = terminal
 			}
 		}
-		if status < 400 {
+		if isDynamic5hPressureError(parsed) {
+			return
+		}
+	if status < 400 {
 			if parsed.StreamFailure {
 				status = inferStreamFailureStatus(c, parsed)
 			} else {
@@ -1432,6 +1436,9 @@ func opsStreamErrorsAllRequestScoped(streamErrs []service.OpsStreamError) bool {
 }
 
 func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus int, streamErr service.OpsStreamError) {
+	if strings.EqualFold(strings.TrimSpace(streamErr.Code), opsCodeDynamic5hLimit) || strings.Contains(strings.ToLower(streamErr.Message), "rolling five-hour usage limit") {
+		return
+	}
 	// 命中 skip_monitoring=true 透传规则的请求跳过落库，与其它分支一致。
 	if streamErr.SkipMonitoring || (streamErr.Turn == 0 && !streamErr.RequestScoped && shouldSkipFinalOpsFailure(c)) {
 		return
@@ -1579,6 +1586,10 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 	}
 
 	enqueueOpsErrorLog(ops, entry)
+}
+
+func isDynamic5hPressureError(parsed parsedOpsError) bool {
+	return strings.EqualFold(strings.TrimSpace(parsed.Code), opsCodeDynamic5hLimit) || strings.Contains(strings.ToLower(parsed.Message), "rolling five-hour usage limit")
 }
 
 func applyOpsStreamErrorSnapshot(entry *service.OpsInsertErrorLogInput, streamErr service.OpsStreamError) {
@@ -2254,6 +2265,9 @@ func classifyOpsIsBusinessLimited(errType, phase, code string, status int, messa
 	if isOpsLocalBusinessLimitError(code, strings.ToLower(message)) {
 		return true
 	}
+	if strings.TrimSpace(code) == opsCodeDynamic5hLimit || strings.Contains(strings.ToLower(message), "rolling five-hour usage limit") {
+		return true
+	}
 	if phase == "billing" || phase == "concurrency" {
 		// SLA/错误率排除“用户级业务限制”
 		return true
@@ -2295,7 +2309,8 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		opsCodeSubscriptionNotFound,
 		opsCodeSubscriptionInvalid,
 		opsCodeAPIKeyQuotaExhausted,
-		opsCodeAPIKeyQueryDeprecated:
+		opsCodeAPIKeyQueryDeprecated,
+		opsCodeDynamic5hLimit:
 		return true
 	}
 	return strings.Contains(msg, "api key in query parameter is deprecated") ||

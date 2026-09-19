@@ -17,6 +17,7 @@ const (
 	dynamic5hActiveUsersKey  = "dynamic_5h_pressure:active_users"
 	dynamic5hMeterBucketBase = "dynamic_5h_pressure:meter:"
 	dynamic5hUserMeterBase   = "dynamic_5h_pressure:user_meter:"
+	dynamic5hPolicyBase      = "dynamic_5h_pressure:policy:"
 )
 
 type dynamic5hPressureCache struct {
@@ -125,6 +126,29 @@ func (c *dynamic5hPressureCache) floatValues(ctx context.Context, keys []string)
 		result[i], _ = strconv.ParseFloat(fmt.Sprint(value), 64)
 	}
 	return result, nil
+}
+
+func (c *dynamic5hPressureCache) LoadUserPolicy(ctx context.Context, userID int64) (service.Dynamic5hUserPolicy, error) {
+	var p service.Dynamic5hUserPolicy
+	raw, err := c.rdb.Get(ctx, fmt.Sprintf("%s%d", dynamic5hPolicyBase, userID)).Bytes()
+	if err == redis.Nil { p.Multiplier = 1; return p, nil }
+	if err != nil { return p, err }
+	err = json.Unmarshal(raw, &p); if p.Multiplier <= 0 { p.Multiplier = 1 }; return p, err
+}
+
+func (c *dynamic5hPressureCache) StoreUserPolicy(ctx context.Context, userID int64, policy service.Dynamic5hUserPolicy) error {
+	raw, err := json.Marshal(policy); if err != nil { return err }
+	return c.rdb.Set(ctx, fmt.Sprintf("%s%d", dynamic5hPolicyBase, userID), raw, 0).Err()
+}
+
+func (c *dynamic5hPressureCache) ResetUserUsage(ctx context.Context, userID int64) error {
+	pattern := fmt.Sprintf("%s%d:*", dynamic5hUserMeterBase, userID)
+	var cursor uint64
+	for {
+		keys, next, err := c.rdb.Scan(ctx, cursor, pattern, 500).Result(); if err != nil { return err }
+		if len(keys) > 0 { if err := c.rdb.Del(ctx, keys...).Err(); err != nil { return err } }
+		cursor = next; if cursor == 0 { return nil }
+	}
 }
 
 func dynamic5hUserMeterKey(userID, bucket int64) string {

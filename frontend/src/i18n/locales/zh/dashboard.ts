@@ -59,26 +59,31 @@ export default {
     addBalanceWithCode: '使用兑换码充值',
     pressure5h: {
       normal: '目前池容量充足，可借用其他用户的闲置容量。',
-      peak: '目前为 Peak 状态，动态公平份额保护已生效。',
-      limited: '你的 rolling 5h 使用量已超过目前的公平份额。',
-      usage: '5h Usage：{value}%',
-      remaining: 'Remaining：{value}%',
-      recover: 'Recover：{time}'
+      peak: '目前处于高峰状态，动态公平份额保护已生效。',
+      limited: '你的近 5 小时用量已超过当前公平份额。',
+      usage: '5 小时用量：{value}%',
+      remaining: '剩余：{value}%',
+      recover: '预计恢复：{time}'
     }
   },
 
   dynamic5h: {
-    title: '5h 公平使用',
-    description: '目前 rolling 5h 窗口的动态公平份额',
+    title: '5 小时限额',
+    description: '根据当前有效账号池动态计算的近 5 小时公平使用额度',
     unavailable: '使用量校准尚未完成。',
     disabled: '动态 5h 压力保护已停用。',
     normal: '正常',
-    peak: 'Peak',
+    peak: '高峰保护',
     limited: '已限制',
     available: '可使用',
-    usage: '5h Usage',
-    remaining: 'Remaining',
-    recover: 'Recover',
+    usage: '5 小时用量',
+    remaining: '剩余',
+    recover: '预计恢复',
+    rulesTitle: '使用规则',
+    ruleNormal: '资源充足时不会额外限制你；未使用的账号容量可以被暂时借用。',
+    rulePeak: '资源紧张时，已超过动态公平份额的用户会优先受到限制，使用较少的用户仍可继续。',
+    ruleDynamic: '公平份额会随有效账号数量和当前活跃用户变化，不是固定金额或固定 Token 配额。',
+    ruleRecover: '只限制后续新请求，不追回已经成功完成的用量；用量随近 5 小时窗口滚动恢复。',
     now: '现在',
     refresh: '刷新'
   },

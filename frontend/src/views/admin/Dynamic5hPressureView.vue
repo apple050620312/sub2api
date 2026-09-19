@@ -30,11 +30,11 @@
             <div v-else-if="overview.users.length === 0" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
               <div v-for="user in overview.users" :key="user.user_id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(110px,0.7fr)_minmax(280px,2fr)_110px_180px_100px] lg:items-center">
-                <span class="font-medium text-gray-900 dark:text-white">User #{{ user.user_id }}</span>
+                <div><p class="font-medium text-gray-900 dark:text-white">{{ user.email || `用户 #${user.user_id}` }}</p><p class="text-xs text-gray-400">ID: {{ user.user_id }}</p></div>
                 <Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" />
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.recover') }}</p><p class="text-sm text-gray-700 dark:text-gray-200">{{ formatTime(user.recover_at) }}</p></div>
-                <span :class="user.currently_limited ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'" class="w-fit rounded-full px-2.5 py-1 text-xs font-semibold">{{ t(`dynamic5h.${user.currently_limited ? 'limited' : 'available'}`) }}</span>
+                <div class="flex flex-wrap items-center gap-2"><select class="input h-8 text-xs" :aria-label="t('admin.pressure5hPage.policy')" :value="user.exempt ? 'exempt' : String(user.multiplier || 1)" @change="updatePolicy(user, ($event.target as HTMLSelectElement).value)"><option value="1">{{ t('admin.pressure5hPage.normal') }}</option><option value="2">{{ t('admin.pressure5hPage.double') }}</option><option value="exempt">{{ t('admin.pressure5hPage.exempt') }}</option></select><button class="btn-secondary h-8 px-2 text-xs" @click="resetUser(user.user_id)">{{ t('admin.pressure5hPage.resetUsage') }}</button></div>
               </div>
             </div>
           </section>
@@ -51,8 +51,8 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
-import { getDynamic5hPressureOverview } from '@/api/admin/dashboard'
-import type { Dynamic5hAdminOverview } from '@/types'
+import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolicy } from '@/api/admin/dashboard'
+import type { Dynamic5hAdminOverview, Dynamic5hAdminUserStatus } from '@/types'
 
 const { t } = useI18n()
 const overview = ref<Dynamic5hAdminOverview | null>(null)
@@ -67,6 +67,8 @@ const metrics = computed(() => overview.value ? [
 ] : [])
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
 const load = async () => { loading.value = true; try { overview.value = await getDynamic5hPressureOverview() } finally { loading.value = false } }
+const updatePolicy = async (user: Dynamic5hAdminUserStatus, value: string) => { await setDynamic5hUserPolicy(user.user_id, { exempt: value === 'exempt', multiplier: value === 'exempt' ? 1 : Number(value) }); await load() }
+const resetUser = async (userId: number) => { await resetDynamic5hUser(userId); await load() }
 
 onMounted(() => { void load(); timer = setInterval(() => void load(), 30_000) })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })

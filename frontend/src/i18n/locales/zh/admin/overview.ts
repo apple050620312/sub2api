@@ -83,14 +83,14 @@ export default {
         accounts: '纳入账号',
         remaining: '剩余容量',
         activeUsers: '近 5h 活跃用户',
-        peak: 'Peak 状态',
+        peak: '高峰保护',
         enforcement: '公平份额限制',
-        states: { normal: '正常', peak: 'Peak' }
+        states: { normal: '正常', peak: '高峰保护' }
       }
     },
 
     pressure5hPage: {
-      title: '5h 池压力',
+      title: '5 小时限额',
       description: '根据有效账号池动态保护每位用户的公平份额',
       pressure: '压力',
       effectiveAccounts: '有效账号',
@@ -100,14 +100,19 @@ export default {
       off: '未启用',
       users: '活跃用户公平份额',
       user: '用户',
-      usage: '5h Usage',
-      remaining: 'Remaining',
-      recover: 'Recover',
+      usage: '5 小时用量',
+      remaining: '剩余',
+      recover: '预计恢复',
       status: '状态',
       noUsers: '目前 5h 窗口内没有活跃用户。',
       unavailable: '池容量校准尚未完成。',
       disabled: '动态 5h 压力保护已停用。',
-      refresh: '刷新'
+      refresh: '刷新',
+      policy: '策略',
+      normal: '1x',
+      double: '2x',
+      exempt: '豁免',
+      resetUsage: '重置用量'
     },
 
     backup: {

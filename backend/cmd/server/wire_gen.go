@@ -73,7 +73,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	schedulerCache := repository.ProvideSchedulerCache(redisClient, configConfig)
 	accountRepository := repository.NewAccountRepository(client, db, schedulerCache)
 	dynamic5hPressureCache := repository.NewDynamic5hPressureCache(redisClient)
-	dynamic5hPressureService := service.NewDynamic5hPressureService(accountRepository, dynamic5hPressureCache, configConfig)
+	dynamic5hPressureService := service.NewDynamic5hPressureService(accountRepository, dynamic5hPressureCache, configConfig, userRepository)
 	billingCacheService := service.ProvideBillingCacheService(billingCache, userRepository, userSubscriptionRepository, apiKeyRepository, userRPMCache, userGroupRateRepository, configConfig, serviceUserPlatformQuotaRepository, dynamic5hPressureService)
 	apiKeyCache := repository.NewAPIKeyCache(redisClient)
 	concurrencyCache := repository.ProvideConcurrencyCache(redisClient, configConfig)

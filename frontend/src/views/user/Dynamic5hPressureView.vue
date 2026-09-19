@@ -34,6 +34,15 @@
               </div>
             </div>
           </section>
+          <section class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
+            <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('dynamic5h.rulesTitle') }}</h2>
+            <ul class="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-gray-600 dark:text-gray-300">
+              <li>{{ t('dynamic5h.ruleNormal') }}</li>
+              <li>{{ t('dynamic5h.rulePeak') }}</li>
+              <li>{{ t('dynamic5h.ruleDynamic') }}</li>
+              <li>{{ t('dynamic5h.ruleRecover') }}</li>
+            </ul>
+          </section>
         </template>
       </div>
     </div>

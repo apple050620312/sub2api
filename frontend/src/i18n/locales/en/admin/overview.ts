@@ -107,7 +107,12 @@ export default {
       noUsers: 'No active users in the current five-hour window.',
       unavailable: 'Pool calibration is not ready yet.',
       disabled: 'Dynamic 5h pressure protection is disabled.',
-      refresh: 'Refresh'
+      refresh: 'Refresh',
+      policy: 'Policy',
+      normal: '1x',
+      double: '2x',
+      exempt: 'Exempt',
+      resetUsage: 'Reset usage'
     },
 
     backup: {

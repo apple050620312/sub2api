@@ -23,6 +23,8 @@ type DashboardHandler struct {
 	startTime          time.Time // Server start time for uptime calculation
 }
 
+type Dynamic5hPolicyRequest struct { Exempt bool `json:"exempt"`; Multiplier float64 `json:"multiplier"` }
+
 // NewDashboardHandler creates a new admin dashboard handler
 func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService) *DashboardHandler {
 	return &DashboardHandler{
@@ -54,6 +56,23 @@ func (h *DashboardHandler) GetDynamic5hPressureOverview(c *gin.Context) {
 		return
 	}
 	response.Success(c, h.dynamic5hPressure.AdminOverview(c.Request.Context()))
+}
+
+func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
+	if h.dynamic5hPressure == nil { response.InternalError(c, "Dynamic 5h service unavailable"); return }
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64); if err != nil { response.BadRequest(c, "Invalid user ID"); return }
+	var req Dynamic5hPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil { response.BadRequest(c, "Invalid policy"); return }
+	if req.Multiplier == 0 { req.Multiplier = 1 }
+	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}); err != nil { response.Error(c, 500, err.Error()); return }
+	response.Success(c, gin.H{"user_id": userID, "exempt": req.Exempt, "multiplier": req.Multiplier})
+}
+
+func (h *DashboardHandler) ResetDynamic5hUser(c *gin.Context) {
+	if h.dynamic5hPressure == nil { response.InternalError(c, "Dynamic 5h service unavailable"); return }
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64); if err != nil { response.BadRequest(c, "Invalid user ID"); return }
+	if err := h.dynamic5hPressure.ResetUserUsage(c.Request.Context(), userID); err != nil { response.Error(c, 500, err.Error()); return }
+	response.Success(c, gin.H{"user_id": userID, "reset": true})
 }
 
 // parseTimeRange parses start_date, end_date query parameters
