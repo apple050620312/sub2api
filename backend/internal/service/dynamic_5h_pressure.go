@@ -375,11 +375,17 @@ func dynamic5hWindowForAccount(a *Account, now time.Time) (dynamic5hAccountWindo
 			return dynamic5hAccountWindow{}, false
 		}
 		used, ok := resolveAccountExtraNumber(a.Extra, "codex_5h_used_percent")
-		reset := parseSchedulingResetAt(a.Extra["codex_5h_reset_at"])
-		if !ok || reset == nil || !reset.After(now) {
+		resetAt, hasReset := openAICodexWindowResetAt(a.Extra, "5h")
+		if !ok || !hasReset {
 			return dynamic5hAccountWindow{}, false
 		}
-		return dynamic5hAccountWindow{used: used / 100, resetAt: *reset}, true
+		if !resetAt.After(now) {
+			// A rolling window that reset before the account was used again is a
+			// fresh idle window. The synthetic deadline is internal forecasting
+			// state; the real next reset starts with the account's next use.
+			return dynamic5hAccountWindow{used: 0, resetAt: now.Add(dynamic5hWindow)}, true
+		}
+		return dynamic5hAccountWindow{used: used / 100, resetAt: resetAt}, true
 	case PlatformAnthropic:
 		raw, ok := a.Extra["session_window_utilization"]
 		if !ok || a.SessionWindowEnd == nil || !a.SessionWindowEnd.After(now) {
@@ -578,6 +584,7 @@ func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagn
 	d := Dynamic5hAccountDiagnostic{AccountID: a.ID, Name: a.Name, Platform: a.Platform}
 	platform := strings.ToLower(strings.TrimSpace(a.Platform))
 	var fiveUsedKey, fiveResetKey, sevenUsedKey, sevenResetKey string
+	openAIFiveHourReset := false
 	switch platform {
 	case PlatformOpenAI:
 		fiveUsedKey, fiveResetKey, sevenUsedKey, sevenResetKey = "codex_5h_used_percent", "codex_5h_reset_at", "codex_7d_used_percent", "codex_7d_reset_at"
@@ -597,8 +604,20 @@ func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagn
 	}
 	if platform == PlatformAnthropic {
 		d.FiveHourReset = a.SessionWindowEnd
+	} else if platform == PlatformOpenAI {
+		if resetAt, ok := openAICodexWindowResetAt(a.Extra, "5h"); ok {
+			d.FiveHourReset = &resetAt
+			openAIFiveHourReset = !resetAt.After(now)
+		}
 	} else {
 		d.FiveHourReset = parseSchedulingResetAt(a.Extra[fiveResetKey])
+	}
+	if openAIFiveHourReset && d.FiveHourUsed != nil {
+		zero := 0.0
+		d.FiveHourUsed = &zero
+		// Until the account is used again there is no real rolling-window
+		// deadline to present to an administrator.
+		d.FiveHourReset = nil
 	}
 	if value, ok := resolveAccountExtraNumber(a.Extra, sevenUsedKey); ok {
 		if platform == PlatformAnthropic && value <= 1 {
@@ -628,6 +647,9 @@ func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagn
 		d.RejoinAt = d.SevenDayReset
 	case platform == PlatformOpenAI && !openAICodexSnapshotIdentityTrusted(a):
 		d.Reason = "identity_mismatch"
+	case openAIFiveHourReset && d.FiveHourUsed != nil:
+		d.Included = true
+		d.Reason = "included"
 	case d.FiveHourUsed == nil || d.FiveHourReset == nil:
 		d.Reason = "snapshot_missing"
 	case !d.FiveHourReset.After(now):

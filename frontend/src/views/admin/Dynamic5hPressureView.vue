@@ -93,7 +93,9 @@ const metrics = computed(() => overview.value ? [
   { label: t('admin.pressure5hPage.thresholds'), value: `${(overview.value.pool.peak_threshold * 100).toFixed(0)}% / ${(overview.value.pool.normal_threshold * 100).toFixed(0)}%` },
 ] : [])
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
-const formatWindow = (used?: number, reset?: string) => used === undefined ? '-' : `${used.toFixed(1)}% · ${formatTime(reset)}`
+const formatWindow = (used?: number, reset?: string) => used === undefined
+  ? '-'
+  : `${used.toFixed(1)}% · ${reset ? formatTime(reset) : t('common.now')}`
 const auditChange = (log: Dynamic5hAdminOverview['audit_logs'][number]) => log.action === 'usage_reset'
   ? `${(log.before_usage || 0).toFixed(2)} -> ${(log.after_usage || 0).toFixed(2)}`
   : `${log.old_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.old_policy?.multiplier || 1}x`} -> ${log.new_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.new_policy?.multiplier || 1}x`}`

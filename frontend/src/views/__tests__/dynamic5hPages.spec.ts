@@ -16,6 +16,8 @@ vi.mock('@/api/user', () => ({
 }))
 vi.mock('@/api/admin/dashboard', () => ({
   getDynamic5hPressureOverview: getAdminOverview,
+  resetDynamic5hUser: vi.fn(),
+  setDynamic5hUserPolicy: vi.fn(),
   default: { getDynamic5hPressureOverview: getAdminOverview },
 }))
 
@@ -87,6 +89,10 @@ describe('dedicated Dynamic 5h pages', () => {
         burn_rate_per_hour: 1,
         projected_demand: 4,
         pool_capacity: 400,
+        capacity_recovering_next_hour: 0,
+        excluded_account_count: 0,
+        peak_threshold: 0.85,
+        normal_threshold: 0.7,
         evaluated_at: '2026-09-18T00:00:00Z',
       },
       users: [
@@ -94,18 +100,62 @@ describe('dedicated Dynamic 5h pages', () => {
         { user_id: 3, enabled: true, state: 'peak', limit_active: true, currently_limited: false, usage_percent: 60, remaining_percent: 40, window_started_at: '2026-09-18T00:00:00Z' },
         { user_id: 2, enabled: true, state: 'peak', limit_active: true, currently_limited: false, usage_percent: 20, remaining_percent: 80, window_started_at: '2026-09-18T00:00:00Z' },
       ],
+      accounts: [],
+      audit_logs: [],
     })
 
     const wrapper = mount(AdminDynamic5hPressureView, { global })
     await flushPromises()
 
     const text = wrapper.text()
-    expect(text).toContain('User #1')
-    expect(text).toContain('User #2')
-    expect(text).toContain('User #3')
-    expect(text.indexOf('User #1')).toBeLessThan(text.indexOf('User #3'))
-    expect(text.indexOf('User #3')).toBeLessThan(text.indexOf('User #2'))
+    expect(text).toContain('用户 #1')
+    expect(text).toContain('用户 #2')
+    expect(text).toContain('用户 #3')
+    expect(text.indexOf('用户 #1')).toBeLessThan(text.indexOf('用户 #3'))
+    expect(text.indexOf('用户 #3')).toBeLessThan(text.indexOf('用户 #2'))
     expect(wrapper.findAll('[role="progressbar"]')).toHaveLength(3)
+    wrapper.unmount()
+  })
+
+  it('shows a reset and unused account as available now', async () => {
+    getAdminOverview.mockResolvedValueOnce({
+      pool: {
+        enabled: true,
+        data_available: true,
+        calibration_ready: true,
+        pressure: 0.2,
+        raw_pressure: 0.2,
+        state: 'normal',
+        peak_active: false,
+        account_count: 1,
+        active_user_count: 0,
+        remaining_capacity: 1,
+        burn_rate_per_hour: 0,
+        projected_demand: 0,
+        pool_capacity: 100,
+        capacity_recovering_next_hour: 0,
+        excluded_account_count: 0,
+        peak_threshold: 0.85,
+        normal_threshold: 0.7,
+        evaluated_at: '2026-09-18T05:00:00Z',
+      },
+      users: [],
+      accounts: [{
+        account_id: 42,
+        name: 'idle after reset',
+        platform: 'openai',
+        included: true,
+        reason: 'included',
+        five_hour_used_percent: 0,
+      }],
+      audit_logs: [],
+    })
+
+    const wrapper = mount(AdminDynamic5hPressureView, { global })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('0.0% · common.now')
+    expect(wrapper.text()).not.toContain('admin.pressure5hPage.accountReasons.snapshot_expired')
     wrapper.unmount()
   })
 })

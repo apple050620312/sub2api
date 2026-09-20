@@ -402,6 +402,44 @@ func TestDynamic5hSevenDayExhaustionRemovesCapacityUntilRecovery(t *testing.T) {
 	require.False(t, ok, "a recovered but unschedulable account still contributes zero")
 }
 
+func TestDynamic5hExpiredOpenAIWindowReturnsAsFreshIdleCapacity(t *testing.T) {
+	now := time.Date(2026, 9, 18, 5, 0, 0, 0, time.UTC)
+	account := &Account{ID: 42, Name: "idle after reset", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Extra: map[string]any{
+		"codex_5h_used_percent": 82.0,
+		"codex_5h_reset_at":     now.Add(-time.Minute).Format(time.RFC3339),
+		"codex_7d_used_percent": 30.0,
+		"codex_7d_reset_at":     now.Add(4 * 24 * time.Hour).Format(time.RFC3339),
+	}}
+
+	window, ok := dynamic5hWindowForAccount(account, now)
+	require.True(t, ok)
+	require.Zero(t, window.used)
+	require.Equal(t, now.Add(dynamic5hWindow), window.resetAt)
+
+	diagnostic := dynamic5hAccountDiagnostic(account, now)
+	require.True(t, diagnostic.Included)
+	require.Equal(t, "included", diagnostic.Reason)
+	require.NotNil(t, diagnostic.FiveHourUsed)
+	require.Zero(t, *diagnostic.FiveHourUsed)
+	require.Nil(t, diagnostic.FiveHourReset)
+}
+
+func TestDynamic5hExpiredOpenAIWindowStaysExcludedWhileSevenDayIsExhausted(t *testing.T) {
+	now := time.Date(2026, 9, 18, 5, 0, 0, 0, time.UTC)
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Extra: map[string]any{
+		"codex_5h_used_percent": 100.0,
+		"codex_5h_reset_at":     now.Add(-time.Minute).Format(time.RFC3339),
+		"codex_7d_used_percent": 100.0,
+		"codex_7d_reset_at":     now.Add(24 * time.Hour).Format(time.RFC3339),
+	}}
+
+	_, ok := dynamic5hWindowForAccount(account, now)
+	require.False(t, ok)
+	diagnostic := dynamic5hAccountDiagnostic(account, now)
+	require.False(t, diagnostic.Included)
+	require.Equal(t, "seven_day_exhausted", diagnostic.Reason)
+}
+
 func TestDynamic5hRuntimeUnavailableAccountsDoNotContribute(t *testing.T) {
 	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
 	base := Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Extra: map[string]any{
