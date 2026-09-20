@@ -602,14 +602,15 @@ func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagn
 		}
 		d.FiveHourUsed = &value
 	}
-	if platform == PlatformAnthropic {
+	switch platform {
+	case PlatformAnthropic:
 		d.FiveHourReset = a.SessionWindowEnd
-	} else if platform == PlatformOpenAI {
+	case PlatformOpenAI:
 		if resetAt, ok := openAICodexWindowResetAt(a.Extra, "5h"); ok {
 			d.FiveHourReset = &resetAt
 			openAIFiveHourReset = !resetAt.After(now)
 		}
-	} else {
+	default:
 		d.FiveHourReset = parseSchedulingResetAt(a.Extra[fiveResetKey])
 	}
 	if openAIFiveHourReset && d.FiveHourUsed != nil {
