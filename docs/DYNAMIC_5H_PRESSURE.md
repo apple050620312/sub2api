@@ -133,12 +133,14 @@ recorded usage reset while retaining pool consumption.
 
 Events outside the five-hour window plus the conservative bucket boundary are
 acknowledged as expired rather than charged into the present. Delivered ledger
-rows older than seven days are removed in bounded batches. Restore PostgreSQL
+rows older than seven days are removed in batches of 1,000 within the worker's
+ten-second budget. Cleanup runs hourly after draining; unfinished cleanup retries
+on the next worker cycle. Restore PostgreSQL
 and Redis consistently; receipts identify events by database sequence ID.
 
 The admin overview includes per-process `metrics`: refresh/policy failures,
 stale and policy fail-open counts, reservation failures, meter read/write
-failures, settlement failures, denials, reconciliation failures, repaired
+failures, settlement failures, denials, reconciliation and cleanup failures, repaired
 events, and expired events. Counters reset on restart and must be aggregated
 across replicas by monitoring. Policy snapshots, metering reconciliation,
 Redis ledger application, metrics, and traffic replay have separate modules.

@@ -23,7 +23,7 @@ type Dynamic5hMeterRepository interface {
 	EnqueueMeterEvent(context.Context, Dynamic5hMeterEvent) error
 	ListMeterEvents(context.Context, int64, bool, time.Time, int) ([]Dynamic5hMeterEvent, error)
 	AcknowledgeMeterEvent(context.Context, int64) error
-	PruneMeterEvents(context.Context, time.Time) error
+	PruneMeterEvents(context.Context, time.Time) (int64, error)
 }
 
 type Dynamic5hMeterCache interface {
@@ -62,8 +62,16 @@ func (s *Dynamic5hPressureService) StartMeterReconciliation() {
 					}
 				}
 				if s.now().Sub(lastPrune) > time.Hour {
-					if err := repo.PruneMeterEvents(workCtx, s.now().Add(-7*24*time.Hour)); err == nil {
-						lastPrune = s.now()
+					for workCtx.Err() == nil {
+						deleted, err := repo.PruneMeterEvents(workCtx, s.now().Add(-7*24*time.Hour))
+						if err != nil {
+							s.metrics.meterPruneFailures.Add(1)
+							break
+						}
+						if deleted < 1000 {
+							lastPrune = s.now()
+							break
+						}
 					}
 				}
 				finish()

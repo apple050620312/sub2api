@@ -15,6 +15,7 @@ type dynamic5hMetrics struct {
 	meterWriteFailures     atomic.Uint64
 	denials                atomic.Uint64
 	reconciliationFailures atomic.Uint64
+	meterPruneFailures     atomic.Uint64
 	repairedMeterEvents    atomic.Uint64
 	expiredMeterEvents     atomic.Uint64
 }
@@ -32,6 +33,7 @@ type Dynamic5hMetricsSnapshot struct {
 	MeterWriteFailures     uint64 `json:"meter_write_failures_total"`
 	Denials                uint64 `json:"denials_total"`
 	ReconciliationFailures uint64 `json:"reconciliation_failures_total"`
+	MeterPruneFailures     uint64 `json:"meter_prune_failures_total"`
 	RepairedMeterEvents    uint64 `json:"repaired_meter_events_total"`
 	ExpiredMeterEvents     uint64 `json:"expired_meter_events_total"`
 }
@@ -50,6 +52,7 @@ func (s *Dynamic5hPressureService) Metrics() Dynamic5hMetricsSnapshot {
 		MeterWriteFailures:     s.metrics.meterWriteFailures.Load(),
 		Denials:                s.metrics.denials.Load(),
 		ReconciliationFailures: s.metrics.reconciliationFailures.Load(),
+		MeterPruneFailures:     s.metrics.meterPruneFailures.Load(),
 		RepairedMeterEvents:    s.metrics.repairedMeterEvents.Load(),
 		ExpiredMeterEvents:     s.metrics.expiredMeterEvents.Load(),
 	}

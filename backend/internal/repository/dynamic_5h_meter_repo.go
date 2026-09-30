@@ -38,8 +38,11 @@ func (r *dynamic5hPolicyRepository) AcknowledgeMeterEvent(ctx context.Context, e
 	return err
 }
 
-func (r *dynamic5hPolicyRepository) PruneMeterEvents(ctx context.Context, cutoff time.Time) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM dynamic_5h_meter_events WHERE id IN
+func (r *dynamic5hPolicyRepository) PruneMeterEvents(ctx context.Context, cutoff time.Time) (int64, error) {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM dynamic_5h_meter_events WHERE id IN
 (SELECT id FROM dynamic_5h_meter_events WHERE occurred_at<$1 AND delivered_at IS NOT NULL ORDER BY id LIMIT 1000)`, cutoff)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

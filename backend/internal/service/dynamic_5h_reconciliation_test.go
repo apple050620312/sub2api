@@ -38,7 +38,9 @@ func (r *dynamic5hMeterTestRepository) AcknowledgeMeterEvent(_ context.Context, 
 	r.acknowledged[eventID] = true
 	return nil
 }
-func (r *dynamic5hMeterTestRepository) PruneMeterEvents(context.Context, time.Time) error { return nil }
+func (r *dynamic5hMeterTestRepository) PruneMeterEvents(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
 
 type dynamic5hMeterTestCache struct {
 	*dynamic5hMemoryCache
