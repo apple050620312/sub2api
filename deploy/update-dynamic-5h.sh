@@ -22,10 +22,20 @@ compose=(docker compose -f "$COMPOSE_FILE")
 "${compose[@]}" config --services | grep -qx sub2api || die "the Compose project has no sub2api service"
 "${compose[@]}" config --services | grep -qx postgres || die "the Compose project has no postgres service"
 
-old_image=$(docker inspect sub2api --format '{{.Config.Image}}' 2>/dev/null) || die "the sub2api container was not found"
+old_container=$("${compose[@]}" ps -q sub2api)
+[[ -n "$old_container" ]] || die "the sub2api container was not found"
+old_image_id=$(docker inspect "$old_container" --format '{{.Image}}') || die "the running image could not be inspected"
+old_digest=$(docker image inspect "$old_image_id" --format '{{range .RepoDigests}}{{println .}}{{end}}' | head -n 1)
 timestamp=$(date '+%Y%m%d-%H%M%S')
+rollback_image="$old_digest"
+if [[ -z "$rollback_image" ]]; then
+  rollback_image="sub2api-rollback:$timestamp"
+  docker image tag "$old_image_id" "$rollback_image" || die "the running image could not be retained"
+fi
 backup_dir="backups/pre-update-${timestamp}"
 mkdir -p "$backup_dir"
+printf '%s\n' "$old_image_id" > "$backup_dir/image-id"
+printf '%s\n' "$rollback_image" > "$backup_dir/image-reference"
 
 log "backing up the deployment to $backup_dir"
 cp "$COMPOSE_FILE" "$backup_dir/$(basename "$COMPOSE_FILE")"
@@ -43,13 +53,19 @@ fi
   > "$backup_dir/app-data.tar.gz"
 [[ -s "$backup_dir/app-data.tar.gz" ]] || die "application data backup is empty"
 
-compose_tmp=$(mktemp "${COMPOSE_FILE}.XXXXXX")
+compose_tmp=''
+mutated=false
+rolling_back=false
 cleanup() {
-  rm -f "$compose_tmp"
+  if [[ -n "$compose_tmp" ]]; then rm -f "$compose_tmp"; fi
 }
 trap cleanup EXIT
 
-awk -v image="$IMAGE" '
+write_image() {
+  local image="$1"
+  [[ "$image" != *[[:space:]]* && -n "$image" ]] || die "invalid image reference"
+  compose_tmp=$(mktemp "${COMPOSE_FILE}.XXXXXX")
+  awk -v image="$image" '
   /^  sub2api:[[:space:]]*$/ { in_service = 1 }
   in_service && /^  [[:alnum:]_-]+:[[:space:]]*$/ && $0 !~ /^  sub2api:/ { in_service = 0 }
   in_service && /^    image:[[:space:]]*/ && !replaced {
@@ -59,22 +75,38 @@ awk -v image="$IMAGE" '
   }
   { print }
   END { if (!replaced) exit 42 }
-' "$COMPOSE_FILE" > "$compose_tmp" || die "could not replace the sub2api image in $COMPOSE_FILE"
-mv "$compose_tmp" "$COMPOSE_FILE"
-compose_tmp=''
-
-if ! "${compose[@]}" config --quiet; then
-  cp "$backup_dir/$(basename "$COMPOSE_FILE")" "$COMPOSE_FILE"
-  die "updated Compose configuration is invalid; the original file was restored"
-fi
+' "$COMPOSE_FILE" > "$compose_tmp" || return 1
+  mv "$compose_tmp" "$COMPOSE_FILE"
+  compose_tmp=''
+}
 
 rollback() {
-  log "new container did not become healthy; restoring image $old_image"
-  cp "$backup_dir/$(basename "$COMPOSE_FILE")" "$COMPOSE_FILE"
-  "${compose[@]}" up -d --no-deps sub2api || true
+  trap - ERR
+  if [[ "$rolling_back" == true ]]; then exit 1; fi
+  rolling_back=true
+  log "update failed; restoring image $rollback_image ($old_image_id)"
+  cp "$backup_dir/$(basename "$COMPOSE_FILE")" "$COMPOSE_FILE" || die "could not restore Compose configuration"
+  write_image "$rollback_image" || die "could not pin the previous image"
+  if ! "${compose[@]}" up -d --no-deps --pull never sub2api; then
+    die "rollback failed; retained image reference is in $backup_dir/image-reference"
+  fi
   "${compose[@]}" logs --tail=100 sub2api || true
-  die "update failed and the previous Compose configuration was restored"
+  die "update failed; previous image restored; database backup retained at $backup_dir"
 }
+
+on_error() {
+  local result=$?
+  if [[ "$mutated" == true ]]; then rollback; fi
+  exit "$result"
+}
+trap on_error ERR
+
+mutated=true
+write_image "$IMAGE" || rollback
+
+if ! "${compose[@]}" config --quiet; then
+  rollback
+fi
 
 log "pulling $IMAGE"
 "${compose[@]}" pull sub2api
@@ -87,7 +119,7 @@ while (( SECONDS < deadline )); do
   [[ -n "$container_id" ]] || rollback
   state=$(docker inspect "$container_id" --format '{{.State.Status}}' 2>/dev/null || true)
   health=$(docker inspect "$container_id" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || true)
-  if [[ "$state" == running && ( "$health" == healthy || "$health" == none ) ]]; then
+  if [[ "$state" == running && "$health" == healthy ]]; then
     log "update complete: $IMAGE"
     log "backup retained at $backup_dir"
     "${compose[@]}" ps

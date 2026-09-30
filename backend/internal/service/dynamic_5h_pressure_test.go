@@ -180,6 +180,7 @@ func storeDynamic5hTestStatus(svc *Dynamic5hPressureService, ctx context.Context
 	svc.storeStatus(ctx, Dynamic5hPressureStatus{
 		Enabled: true, DataAvailable: true, CalibrationReady: capacity > 0,
 		State: state, PeakActive: state == Dynamic5hPressurePeak, PoolCapacity: capacity,
+		EvaluatedAt: svc.now().UTC(),
 	})
 }
 
@@ -348,6 +349,7 @@ func TestDynamic5hInactiveDemandExpiresWithoutErasingRollingUsage(t *testing.T) 
 	// idle user's share. Their previous 120 units are still in the rolling 5h
 	// meter, but the sole active user's current fair share is now 200.
 	current = now.Add(dynamic5hActiveLease + time.Second)
+	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 200)
 	user1Ctx := context.WithValue(ctx, ctxkey.RequestID, "returning-user-1")
 	require.NoError(t, svc.CheckUser(user1Ctx, 1))
 	require.InDelta(t, 60, svc.UserStatus(ctx, 1).UsagePercent, 0.01)

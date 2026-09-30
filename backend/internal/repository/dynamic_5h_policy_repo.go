@@ -26,6 +26,24 @@ func (r *dynamic5hPolicyRepository) GetUserPolicy(ctx context.Context, userID in
 	return policy, err == nil, err
 }
 
+func (r *dynamic5hPolicyRepository) ListUserPolicies(ctx context.Context) (map[int64]service.Dynamic5hUserPolicy, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT user_id, exempt, multiplier FROM dynamic_5h_user_policies`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	policies := make(map[int64]service.Dynamic5hUserPolicy)
+	for rows.Next() {
+		var userID int64
+		var policy service.Dynamic5hUserPolicy
+		if err := rows.Scan(&userID, &policy.Exempt, &policy.Multiplier); err != nil {
+			return nil, err
+		}
+		policies[userID] = policy
+	}
+	return policies, rows.Err()
+}
+
 func (r *dynamic5hPolicyRepository) UpsertUserPolicy(ctx context.Context, userID int64, policy service.Dynamic5hUserPolicy, actorUserID int64, reason string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

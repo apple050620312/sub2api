@@ -132,6 +132,9 @@ type BillingCacheService struct {
 func (s *BillingCacheService) SetDynamic5hPressureService(pressure *Dynamic5hPressureService) {
 	if s != nil {
 		s.dynamic5hPressure = pressure
+		if pressure != nil {
+			pressure.StartMeterReconciliation()
+		}
 	}
 }
 
@@ -171,6 +174,9 @@ func NewBillingCacheService(
 
 // Stop 关闭缓存写入工作池
 func (s *BillingCacheService) Stop() {
+	if s.dynamic5hPressure != nil {
+		s.dynamic5hPressure.StopMeterReconciliation()
+	}
 	s.cacheWriteStopOnce.Do(func() {
 		s.stopped.Store(true)
 

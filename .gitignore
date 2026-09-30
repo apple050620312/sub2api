@@ -162,3 +162,6 @@ issues/
 .vite/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+!.github/scripts/
+!.github/scripts/await-ci.sh
+!.github/scripts/promote-feature-image.sh

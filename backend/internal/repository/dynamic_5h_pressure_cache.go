@@ -12,16 +12,17 @@ import (
 )
 
 const (
-	dynamic5hStatusKey       = "dynamic_5h_pressure:status"
-	dynamic5hRefreshLockKey  = "dynamic_5h_pressure:refresh_lock"
-	dynamic5hActiveUsersKey  = "dynamic_5h_pressure:active_users"
-	dynamic5hRollingUsersKey = "dynamic_5h_pressure:rolling_users"
-	dynamic5hMeterBucketBase = "dynamic_5h_pressure:meter:"
-	dynamic5hUserMeterBase   = "dynamic_5h_pressure:user_meter:"
+	dynamic5hPricePrefix     = "dynamic_5h_pressure:price_v1:"
+	dynamic5hStatusKey       = dynamic5hPricePrefix + "status"
+	dynamic5hRefreshLockKey  = dynamic5hPricePrefix + "refresh_lock"
+	dynamic5hActiveUsersKey  = dynamic5hPricePrefix + "active_users"
+	dynamic5hRollingUsersKey = dynamic5hPricePrefix + "rolling_users"
+	dynamic5hMeterBucketBase = dynamic5hPricePrefix + "meter:"
+	dynamic5hUserMeterBase   = dynamic5hPricePrefix + "user_meter:"
 	dynamic5hPolicyBase      = "dynamic_5h_pressure:policy:"
-	dynamic5hPendingUsersKey = "dynamic_5h_pressure:pending_users"
-	dynamic5hPendingBase     = "dynamic_5h_pressure:pending:"
-	dynamic5hReservationBase = "dynamic_5h_pressure:reservation:"
+	dynamic5hPendingUsersKey = dynamic5hPricePrefix + "pending_users"
+	dynamic5hPendingBase     = dynamic5hPricePrefix + "pending:"
+	dynamic5hReservationBase = dynamic5hPricePrefix + "reservation:"
 )
 
 type dynamic5hPressureCache struct {
@@ -52,7 +53,7 @@ func (c *dynamic5hPressureCache) StoreStatus(ctx context.Context, status service
 	if err != nil {
 		return err
 	}
-	return c.rdb.Set(ctx, dynamic5hStatusKey, raw, 0).Err()
+	return c.rdb.Set(ctx, dynamic5hStatusKey, raw, 6*time.Hour).Err()
 }
 
 func (c *dynamic5hPressureCache) AcquireRefreshLock(ctx context.Context, token string, ttl time.Duration) (bool, error) {

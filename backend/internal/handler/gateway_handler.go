@@ -2425,13 +2425,17 @@ func sendMockInterceptResponse(c *gin.Context, model string, interceptType Inter
 
 // extractQuotaResetSeconds 从 quota 错误的 metadata 中提取 window_resets_at 并计算
 // 距重置剩余秒数。fallback 路径必须返回 ≥1 秒，避免客户端立即重试无限循环。
-func extractQuotaResetSeconds(err error) int {
+func extractQuotaResetSeconds(err error, metadataKeys ...string) int {
 	const fallback = 60
 	appErr := pkgerrors.FromError(err)
 	if appErr == nil {
 		return fallback
 	}
-	raw, ok := appErr.Metadata["window_resets_at"]
+	metadataKey := "window_resets_at"
+	if len(metadataKeys) > 0 {
+		metadataKey = metadataKeys[0]
+	}
+	raw, ok := appErr.Metadata[metadataKey]
 	if !ok || raw == "" {
 		return fallback
 	}
@@ -2454,6 +2458,9 @@ func extractQuotaResetSeconds(err error) int {
 }
 
 func billingErrorDetails(err error) (status int, code, message string, retryAfter int) {
+	if errors.Is(err, service.ErrDynamic5hPressureLimitExceeded) {
+		return http.StatusTooManyRequests, "rate_limit_exceeded", pkgerrors.Message(err), extractQuotaResetSeconds(err, "recover_at")
+	}
 	if errors.Is(err, service.ErrBillingServiceUnavailable) {
 		msg := pkgerrors.Message(err)
 		if msg == "" {

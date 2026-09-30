@@ -46,6 +46,7 @@ func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {
 		BalanceCost:         1.25,
 		APIKeyQuotaCost:     1.25,
 		APIKeyRateLimitCost: 1.25,
+		Dynamic5hMeterUnits: 1.5,
 	}
 
 	result1, err := repo.Apply(ctx, cmd)
@@ -78,6 +79,13 @@ func TestUsageBillingRepositoryApply_DeduplicatesBalanceBilling(t *testing.T) {
 	var dedupCount int
 	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_billing_dedup WHERE request_id = $1 AND api_key_id = $2", requestID, apiKey.ID).Scan(&dedupCount))
 	require.Equal(t, 1, dedupCount)
+	var meterCount int
+	var meterAmount float64
+	require.NoError(t, integrationDB.QueryRowContext(ctx, "SELECT COUNT(*),COALESCE(SUM(amount),0) FROM dynamic_5h_meter_events WHERE source_key=$1", fmt.Sprintf("billing:%d:%s", apiKey.ID, requestID)).Scan(&meterCount, &meterAmount))
+	require.Equal(t, 1, meterCount)
+	require.Equal(t, 1.5, meterAmount)
+	require.NotNil(t, result1.Dynamic5hMeterEvent)
+	require.Nil(t, result2.Dynamic5hMeterEvent)
 }
 
 func TestUsageBillingRepositoryApply_DeduplicatesSubscriptionBilling(t *testing.T) {

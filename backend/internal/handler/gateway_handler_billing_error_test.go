@@ -55,6 +55,30 @@ func TestBillingErrorDetails_UnknownErrorFallsBackTo403(t *testing.T) {
 	require.NotEmpty(t, msg)
 }
 
+func TestBillingErrorDetails_Dynamic5hRecovery(t *testing.T) {
+	for _, testCase := range []struct {
+		name        string
+		recovery    string
+		expectedMin int
+		expectedMax int
+	}{
+		{"future", time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339), 599, 600},
+		{"missing", "", 60, 60},
+		{"malformed", "not-a-time", 60, 60},
+		{"past", time.Now().Add(-time.Minute).UTC().Format(time.RFC3339), 60, 60},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := service.ErrDynamic5hPressureLimitExceeded.WithMetadata(map[string]string{"recover_at": testCase.recovery})
+			status, code, message, retryAfter := billingErrorDetails(err)
+			require.Equal(t, http.StatusTooManyRequests, status)
+			require.Equal(t, "rate_limit_exceeded", code)
+			require.NotEmpty(t, message)
+			require.GreaterOrEqual(t, retryAfter, testCase.expectedMin)
+			require.LessOrEqual(t, retryAfter, testCase.expectedMax)
+		})
+	}
+}
+
 func TestExtractQuotaResetSeconds_T19_HappyPath(t *testing.T) {
 	err := service.ErrUserPlatformDailyQuotaExhausted.WithMetadata(map[string]string{
 		"window_resets_at": time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339),
