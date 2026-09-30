@@ -149,7 +149,6 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	defer cancel()
 
 	cost := p.Cost
-	p.MeterUnits = dynamic5hPriceMeter(cost)
 
 	if p.IsSubscriptionBill {
 		// Subscription usage tracked by ActualCost so group rate multiplier
@@ -304,7 +303,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
 	}
 	if dynamic5hPlatformSupported(p.Account.Platform) {
-		cmd.Dynamic5hMeterUnits = dynamic5hPriceMeter(p.Cost)
+		cmd.Dynamic5hMeterUnits = dynamic5hPriceMeter(p.Cost, usageLog)
 	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model
@@ -362,7 +361,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	if p == nil || deps == nil {
 		return false, nil
 	}
-	p.MeterUnits = dynamic5hPriceMeter(p.Cost)
+	p.MeterUnits = dynamic5hPriceMeter(p.Cost, usageLog)
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
@@ -904,7 +903,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		if s.billingCacheService != nil {
-			s.billingCacheService.RecordDynamic5hPressureUsage(ctx, user.ID, account.Platform, dynamic5hPriceMeter(cost))
+			s.billingCacheService.RecordDynamic5hPressureUsage(ctx, user.ID, account.Platform, dynamic5hPriceMeter(cost, usageLog))
 		}
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)

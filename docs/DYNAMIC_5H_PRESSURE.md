@@ -41,9 +41,12 @@ buckets in both Normal and Peak. It uses recent gateway demand to translate the
 effective account pool into the same internal meter units. No administrator
 configures a fixed money or token allowance.
 
-Meter units are model-price-weighted cost (`CostBreakdown.TotalCost`), including
+Meter units are model-price-weighted cost. Prefer the precomputed upstream
+model `UsageLog.AccountStatsCost` when available, without applying the account
+statistics multiplier. Otherwise use `CostBreakdown.TotalCost`, including
 the model's input/output/cache/image pricing, before user/group billing rate
-multipliers (`ActualCost`). Equal token counts on differently priced models
+multipliers (`ActualCost`). Invalid explicit upstream costs do not fall back
+to customer pricing. Equal token counts on differently priced models
 therefore consume different shares. Missing, zero, or invalid prices do not
 fall back to raw tokens. This is a price-weighted estimate, not a claim that
 model list prices exactly match native subscription quota consumption.
