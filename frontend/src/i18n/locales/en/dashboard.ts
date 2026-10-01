@@ -88,7 +88,7 @@ export default {
     rulesTitle: 'Usage rules',
     ruleNormal: 'When capacity is available, there is no extra limit; unused account capacity may be temporarily borrowed.',
     rulePeak: 'When resources are tight, users above their dynamic fair share are limited first, while lighter users can continue.',
-    ruleDynamic: 'Fair share changes with effective accounts and active users; it is not a fixed dollar or token quota.',
+    ruleDynamic: 'A 1x multiplier equals one effective Plus account calibrated five-hour capacity and does not change with active user count.',
     ruleRecover: 'Only new requests are limited. Successful usage is not clawed back, and the rolling five-hour window recovers over time.',
     multiplier: 'Current extra allowance multiplier: {value}x',
     exempt: 'Your account is currently exempt from peak enforcement',

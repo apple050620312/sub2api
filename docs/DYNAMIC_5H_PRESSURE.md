@@ -51,7 +51,11 @@ therefore consume different shares. Missing, zero, or invalid prices do not
 fall back to raw tokens. This is a price-weighted estimate, not a claim that
 model list prices exactly match native subscription quota consumption.
 Native five-hour snapshots calibrate aggregate capacity; concurrent requests
-prevent reliably attributing a snapshot delta to one request.
+prevent reliably attributing a snapshot delta to one request. One `x1` multiplier
+is the calibrated five-hour capacity of one effective Plus account, calculated as
+the calibrated pool capacity divided by the effective account count. It does not
+depend on how many users are currently active. Usage remains a rolling five-hour
+total and expires by bucket.
 
 Price-based Redis keys use a new `price_v1` namespace. Old token buckets are
 not converted or mixed with price-based usage; calibration warms up using new
