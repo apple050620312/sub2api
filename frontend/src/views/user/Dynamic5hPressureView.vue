@@ -12,24 +12,24 @@
       </header>
 
       <div v-if="loading && !status" class="flex justify-center py-16"><LoadingSpinner /></div>
-      <div v-else-if="status" class="space-y-6">
+      <div v-else-if="status" class="space-y-8">
         <div v-if="!status.enabled" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('dynamic5h.disabled') }}</div>
         <div v-else-if="!status.window_started_at" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('dynamic5h.unavailable') }}</div>
-        <div v-else>
-          <section class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
-            <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div v-else class="space-y-8">
+          <section class="rounded-lg border border-gray-200 bg-white p-6 dark:border-dark-700 dark:bg-dark-800">
+            <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
               <span :class="stateClass" class="rounded-full px-3 py-1 text-sm font-semibold">{{ stateLabel }}</span>
               <span v-if="status.currently_limited" class="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('dynamic5h.limited') }}</span>
               <span v-else class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('dynamic5h.available') }}</span>
             </div>
             <Dynamic5hUsageBar :label="t('dynamic5h.usage')" :value="status.usage_percent" />
             <p class="mt-3 text-sm font-medium" :class="warningClass">{{ t(`dynamic5h.warning.${status.warning_level || 'normal'}`) }}</p>
-            <div class="mt-6 grid gap-4 sm:grid-cols-2">
-              <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700/50">
+            <div class="mt-8 grid gap-5 sm:grid-cols-2">
+              <div class="rounded-lg bg-gray-50 p-5 dark:bg-dark-700/50">
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dynamic5h.remaining') }}</p>
                 <p class="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{{ status.remaining_percent.toFixed(1) }}%</p>
               </div>
-              <div class="rounded-lg bg-gray-50 p-4 dark:bg-dark-700/50">
+              <div class="rounded-lg bg-gray-50 p-5 dark:bg-dark-700/50">
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('dynamic5h.recover') }}</p>
                 <p class="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{{ formatTime(status.recover_at) }}</p>
               </div>
@@ -40,7 +40,7 @@
               <span v-if="status.pending_percent > 0">{{ t('dynamic5h.pending', { value: status.pending_percent.toFixed(1) }) }}</span>
             </div>
           </section>
-          <section class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
+          <section class="rounded-lg border border-gray-200 bg-white p-6 dark:border-dark-700 dark:bg-dark-800">
             <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('dynamic5h.rulesTitle') }}</h2>
             <ul class="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-gray-600 dark:text-gray-300">
               <li>{{ t('dynamic5h.ruleNormal') }}</li>
@@ -51,8 +51,8 @@
           </section>
         </div>
         <div v-if="status.enabled && status.pool">
-          <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-            <div v-for="metric in poolMetrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+          <section class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            <div v-for="metric in poolMetrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
               <p class="text-xs text-gray-500">{{ metric.label }}</p><p class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ metric.value }}</p>
             </div>
           </section>

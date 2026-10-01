@@ -12,27 +12,27 @@
       </header>
 
       <div v-if="loading && !overview" class="flex justify-center py-16"><LoadingSpinner /></div>
-      <div v-else-if="overview">
+      <div v-else-if="overview" class="space-y-8">
         <div v-if="!overview.pool.enabled" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('admin.pressure5hPage.disabled') }}</div>
         <div v-else>
-          <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div v-for="metric in metrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+          <section class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            <div v-for="metric in metrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ metric.label }}</p>
               <p class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ metric.value }}</p>
             </div>
           </section>
-          <div v-if="overview.guaranteed_capacity_ratio > 1" class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+          <div v-if="overview.guaranteed_capacity_ratio > 1" class="rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
             {{ t('admin.pressure5hPage.overcommitted', { value: (overview.guaranteed_capacity_ratio * 100).toFixed(1) }) }}
           </div>
 
           <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
-            <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700">
+            <div class="border-b border-gray-200 px-6 py-5 dark:border-dark-700">
               <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.users') }}</h2>
             </div>
-            <div v-if="!overview.pool.calibration_ready" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.unavailable') }}</div>
-            <div v-else-if="overview.users.length === 0" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
+            <div v-if="!overview.pool.calibration_ready" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.unavailable') }}</div>
+            <div v-else-if="overview.users.length === 0" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-              <div v-for="user in overview.users" :key="user.user_id" class="grid gap-4 px-5 py-5 lg:grid-cols-[minmax(250px,1.2fr)_minmax(180px,1.3fr)_100px_170px_minmax(250px,auto)] lg:items-center">
+              <div v-for="user in overview.users" :key="user.user_id" class="grid gap-6 px-6 py-7 lg:grid-cols-[minmax(250px,1.2fr)_minmax(180px,1.3fr)_100px_170px_minmax(250px,auto)] lg:items-center">
                 <div class="min-w-0"><div class="flex flex-nowrap items-center gap-2"><p class="truncate font-medium text-gray-900 dark:text-white">{{ user.email || '用户' }}</p><span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium" :class="user.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'">{{ t(`admin.pressure5hPage.${user.active ? 'active' : 'inactive'}`) }}</span></div></div>
                 <Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" />
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
@@ -52,9 +52,9 @@
 
 
           <details class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
-            <summary class="cursor-pointer list-none px-5 py-4 font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</summary>
-            <div v-if="overview.audit_logs.length === 0" class="p-5 text-sm text-gray-500">{{ t('admin.pressure5hPage.noAudit') }}</div>
-            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-2 px-5 py-3 text-sm md:grid-cols-[170px_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>ID {{ log.actor_user_id || '-' }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · 用户 {{ log.user_id }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span></div></div>
+            <summary class="cursor-pointer list-none px-6 py-5 font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</summary>
+            <div v-if="overview.audit_logs.length === 0" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.noAudit') }}</div>
+            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-3 px-6 py-4 text-sm md:grid-cols-[170px_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>ID {{ log.actor_user_id || '-' }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · 用户 {{ log.user_id }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span></div></div>
           </details>
         </div>
       </div>
