@@ -77,11 +77,23 @@ type Dynamic5hUserStatus struct {
 	Exempt           bool                   `json:"exempt"`
 	WarningLevel     string                 `json:"warning_level"`
 	PendingPercent   float64                `json:"pending_percent"`
+	Pool             *Dynamic5hPublicPool   `json:"pool,omitempty"`
+}
+
+type Dynamic5hPublicPool struct {
+	Pressure             float64                      `json:"pressure"`
+	AccountCount         int                          `json:"account_count"`
+	ExcludedAccountCount int                          `json:"excluded_account_count"`
+	ActiveUserCount      int64                        `json:"active_user_count"`
+	Stale                bool                         `json:"stale"`
+	EvaluatedAt          time.Time                    `json:"evaluated_at"`
+	NextResetAt          *time.Time                   `json:"next_reset_at,omitempty"`
+	Accounts             []Dynamic5hAccountDiagnostic `json:"accounts"`
 }
 
 type Dynamic5hAdminUserStatus struct {
 	UserID int64  `json:"user_id"`
-	Email  string `json:"email"`
+	Email  string `json:"-"`
 	Active bool   `json:"active"`
 	Dynamic5hUserStatus
 }
@@ -95,9 +107,9 @@ type Dynamic5hAuditLog struct {
 	ID          int64                `json:"id"`
 	UserID      int64                `json:"user_id"`
 	ActorUserID *int64               `json:"actor_user_id,omitempty"`
-	ActorEmail  string               `json:"actor_email"`
+	ActorEmail  string               `json:"-"`
 	Action      string               `json:"action"`
-	Reason      string               `json:"reason"`
+	Reason      string               `json:"-"`
 	BeforeUsage *float64             `json:"before_usage,omitempty"`
 	AfterUsage  *float64             `json:"after_usage,omitempty"`
 	OldPolicy   *Dynamic5hUserPolicy `json:"old_policy,omitempty"`
@@ -482,6 +494,27 @@ func (s *Dynamic5hPressureService) AdminStatus(ctx context.Context, refresh bool
 func (s *Dynamic5hPressureService) UserStatus(ctx context.Context, userID int64) Dynamic5hUserStatus {
 	status := s.AdminStatus(ctx, false)
 	return s.userStatus(ctx, userID, status, s.now().UTC())
+}
+
+func (s *Dynamic5hPressureService) PublicUserStatus(ctx context.Context, userID int64) (Dynamic5hUserStatus, error) {
+	status := s.AdminStatus(ctx, false)
+	result := s.userStatus(ctx, userID, status, s.now().UTC())
+	pool := &Dynamic5hPublicPool{Pressure: status.Pressure, AccountCount: status.AccountCount, ExcludedAccountCount: status.ExcludedAccountCount, ActiveUserCount: status.ActiveUserCount, Stale: status.Stale, EvaluatedAt: status.EvaluatedAt, NextResetAt: status.NextResetAt, Accounts: []Dynamic5hAccountDiagnostic{}}
+	if s.accountRepo != nil {
+		accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, "")
+		if err != nil {
+			return result, err
+		}
+		for index := range accounts {
+			diagnostic := dynamic5hAccountDiagnostic(&accounts[index], s.now().UTC())
+			if strings.ContainsAny(diagnostic.Name, "@＠") {
+				diagnostic.Name = fmt.Sprintf("账号 #%d", diagnostic.AccountID)
+			}
+			pool.Accounts = append(pool.Accounts, diagnostic)
+		}
+	}
+	result.Pool = pool
+	return result, nil
 }
 
 func (s *Dynamic5hPressureService) userStatus(ctx context.Context, userID int64, status Dynamic5hPressureStatus, now time.Time) Dynamic5hUserStatus {

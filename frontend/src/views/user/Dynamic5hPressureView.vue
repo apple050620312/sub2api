@@ -15,7 +15,7 @@
       <div v-else-if="status" class="space-y-6">
         <div v-if="!status.enabled" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('dynamic5h.disabled') }}</div>
         <div v-else-if="!status.window_started_at" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('dynamic5h.unavailable') }}</div>
-        <template v-else>
+        <div v-else>
           <section class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
             <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
               <span :class="stateClass" class="rounded-full px-3 py-1 text-sm font-semibold">{{ stateLabel }}</span>
@@ -49,7 +49,16 @@
               <li>{{ t('dynamic5h.ruleRecover') }}</li>
             </ul>
           </section>
-        </template>
+        </div>
+        <div v-if="status.enabled && status.pool">
+          <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div v-for="metric in poolMetrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
+              <p class="text-xs text-gray-500">{{ metric.label }}</p><p class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ metric.value }}</p>
+            </div>
+          </section>
+          <p class="text-sm text-gray-500">{{ t('dynamic5h.updatedAt') }}: {{ formatTime(status.pool.evaluated_at) }} <span v-if="status.pool.stale" class="text-amber-600">{{ t('dynamic5h.stale') }}</span></p>
+          <Dynamic5hAccountWindows :accounts="status.pool.accounts" />
+        </div>
       </div>
     </div>
   </AppLayout>
@@ -60,6 +69,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
+import Dynamic5hAccountWindows from '@/components/common/Dynamic5hAccountWindows.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { getDynamic5hPressure } from '@/api/user'
@@ -68,6 +78,13 @@ import type { Dynamic5hUserStatus } from '@/types'
 const { t } = useI18n()
 const status = ref<Dynamic5hUserStatus | null>(null)
 const loading = ref(false)
+const poolMetrics = computed(() => status.value?.pool ? [
+  { label: t('admin.pressure5hPage.pressure'), value: `${(status.value.pool.pressure * 100).toFixed(1)}%` },
+  { label: t('admin.pressure5hPage.effectiveAccounts'), value: status.value.pool.account_count },
+  { label: t('admin.pressure5hPage.excludedAccounts'), value: status.value.pool.excluded_account_count },
+  { label: t('admin.pressure5hPage.activeUsers'), value: status.value.pool.active_user_count },
+  { label: t('admin.pressure5hPage.nextReset'), value: status.value.pool.next_reset_at ? formatTime(status.value.pool.next_reset_at) : '-' },
+] : [])
 let timer: ReturnType<typeof setInterval> | undefined
 
 const stateLabel = computed(() => t(`dynamic5h.${status.value?.state === 'peak' ? 'peak' : 'normal'}`))

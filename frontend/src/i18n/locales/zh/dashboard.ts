@@ -68,6 +68,12 @@ export default {
   },
 
   dynamic5h: {
+    accountWindows: '账号池用量窗口',
+    searchAccounts: '搜索账号名称或平台',
+    windowUnavailable: '暂无窗口数据',
+    noAccounts: '暂无匹配账号',
+    updatedAt: '数据更新时间',
+    stale: '数据已过期，暂不执行限额保护',
     title: '5 小时限额',
     description: '根据当前有效账号池动态计算的近 5 小时公平使用额度',
     unavailable: '使用量校准尚未完成。',

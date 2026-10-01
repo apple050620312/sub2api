@@ -83,10 +83,22 @@ are shown in `deploy/config.example.yaml`.
 
 - Admin: `GET /api/v1/admin/dashboard/5h-pressure` returns a freshly evaluated
   pool signal and its capacity inputs.
-- User: `GET /api/v1/user/5h-pressure` returns only the current state, 5h usage
+- User: `GET /api/v1/user/5h-pressure` returns the current state, 5h usage
   percentage, remaining percentage, recovery time, and limited flag. `100%`
   means the user's current dynamic fair share, so usage can exceed `100%`. It
   never exposes money, tokens, or internal capacity units.
+
+用户限额页面同时公开账号池压力、有效及排除账号数量、活跃用户数量、
+数据更新时间及最近重置时间。账号窗口区域支持搜索所有账号，展示名称、
+平台、纳入或排除状态、5h/7d 用量百分比、重置时间及预计重新加入时间。
+未取得或不支持的窗口显示“暂无窗口数据”，不会被当作零用量。
+公开接口只使用明确列出的字段；不返回邮箱、凭证、原始 extra、用户列表或审计记录。
+账号名称含邮箱格式时替换为账号编号。
+
+倍率输入仅编辑草稿；点击“应用倍率”并确认旧值和新值后才提交。
+按 Enter 或离开输入框不会提交。豁免和重置也需要确认。
+操作原因不再收集或在接口、历史记录中展示；原有数据库记录保持兼容，
+操作时间、操作者及修改前后值仍可审计。
 
 The admin dashboard always displays the global signal and state. The user
 dashboard displays a warning only while a temporary Peak rolling limit applies.

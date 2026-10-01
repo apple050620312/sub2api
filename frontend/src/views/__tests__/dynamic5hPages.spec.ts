@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const { getUserStatus, getAdminOverview } = vi.hoisted(() => ({
+const { getUserStatus, getAdminOverview, setPolicy } = vi.hoisted(() => ({
   getUserStatus: vi.fn(),
   getAdminOverview: vi.fn(),
+  setPolicy: vi.fn(),
 }))
 
 vi.mock('vue-i18n', async () => {
@@ -17,7 +18,7 @@ vi.mock('@/api/user', () => ({
 vi.mock('@/api/admin/dashboard', () => ({
   getDynamic5hPressureOverview: getAdminOverview,
   resetDynamic5hUser: vi.fn(),
-  setDynamic5hUserPolicy: vi.fn(),
+  setDynamic5hUserPolicy: setPolicy,
   default: { getDynamic5hPressureOverview: getAdminOverview },
 }))
 
@@ -154,7 +155,8 @@ describe('dedicated Dynamic 5h pages', () => {
     const wrapper = mount(AdminDynamic5hPressureView, { global })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('0.0% · common.now')
+    expect(wrapper.text()).toContain('0.0%')
+    expect(wrapper.text()).toContain('common.now')
     expect(wrapper.text()).not.toContain('admin.pressure5hPage.accountReasons.snapshot_expired')
     wrapper.unmount()
   })

@@ -40,7 +40,12 @@ func (h *UserHandler) GetDynamic5hPressure(c *gin.Context) {
 		response.Success(c, service.Dynamic5hUserStatus{State: service.Dynamic5hPressureNormal})
 		return
 	}
-	response.Success(c, h.dynamic5hPressure.UserStatus(c.Request.Context(), subject.UserID))
+	status, err := h.dynamic5hPressure.PublicUserStatus(c.Request.Context(), subject.UserID)
+	if err != nil {
+		response.InternalError(c, "账号池信息暂时不可用")
+		return
+	}
+	response.Success(c, status)
 }
 
 // NewUserHandler creates a new UserHandler

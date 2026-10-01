@@ -1977,6 +1977,16 @@ export interface Dynamic5hPressureStatus {
 }
 
 export interface Dynamic5hUserStatus {
+	pool?: {
+    pressure: number
+    account_count: number
+    excluded_account_count: number
+    active_user_count: number
+    stale: boolean
+    evaluated_at: string
+    next_reset_at?: string
+    accounts: Dynamic5hAdminOverview['accounts']
+  }
   enabled: boolean
   state: 'normal' | 'peak'
   limit_active: boolean
@@ -2018,9 +2028,7 @@ export interface Dynamic5hAdminOverview {
     id: number
     user_id: number
     actor_user_id?: number
-    actor_email: string
     action: string
-    reason: string
     before_usage?: number
     after_usage?: number
     old_policy?: { exempt: boolean; multiplier: number }

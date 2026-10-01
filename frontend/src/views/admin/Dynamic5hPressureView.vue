@@ -12,9 +12,9 @@
       </header>
 
       <div v-if="loading && !overview" class="flex justify-center py-16"><LoadingSpinner /></div>
-      <template v-else-if="overview">
+      <div v-else-if="overview">
         <div v-if="!overview.pool.enabled" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('admin.pressure5hPage.disabled') }}</div>
-        <template v-else>
+        <div v-else>
           <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <div v-for="metric in metrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ metric.label }}</p>
@@ -38,30 +38,27 @@
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.recover') }}</p><p class="text-sm text-gray-700 dark:text-gray-200">{{ formatTime(user.recover_at) }}</p></div>
                 <div class="flex flex-wrap items-center gap-2">
-                  <input v-model="policyReasons[user.user_id]" class="input h-8 w-28 px-2 text-xs" :placeholder="t('admin.pressure5hPage.reason')" />
                   <label class="flex h-8 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                     {{ t('admin.pressure5hPage.multiplier') }}
-                    <input class="input h-8 w-20 px-2 text-xs" type="number" min="0.01" step="0.01" :value="user.multiplier || 1" @change="updateMultiplier(user, $event)" />
+                    <input class="input h-8 w-20 px-2 text-xs" type="number" min="0.01" step="0.01" v-model="policyMultipliers[user.user_id]" @keydown.enter.prevent />
                   </label>
-                  <button class="h-8 px-2 text-xs" :class="user.exempt ? 'btn-primary' : 'btn-secondary'" :aria-pressed="user.exempt" @click="toggleExempt(user)">{{ t('admin.pressure5hPage.exempt') }}</button>
-                  <button class="btn-secondary h-8 px-2 text-xs" @click="resetUser(user.user_id)">{{ t('admin.pressure5hPage.resetUsage') }}</button>
+                  <button class="btn-primary h-8 px-2 text-xs" :disabled="saving || !validMultiplier(user)" @click="updateMultiplier(user)">{{ t('admin.pressure5hPage.apply') }}</button>
+                  <button :disabled="saving" class="h-8 px-2 text-xs" :class="user.exempt ? 'btn-primary' : 'btn-secondary'" :aria-pressed="user.exempt" @click="toggleExempt(user)">{{ t('admin.pressure5hPage.exempt') }}</button>
+                  <button class="btn-secondary h-8 px-2 text-xs" :disabled="saving" @click="resetUser(user.user_id)">{{ t('admin.pressure5hPage.resetUsage') }}</button>
                 </div>
               </div>
             </div>
           </section>
 
-          <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
-            <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.accountDiagnostics') }}</h2></div>
-            <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-700/50"><tr><th class="px-5 py-3">{{ t('admin.pressure5hPage.account') }}</th><th class="px-5 py-3">{{ t('admin.pressure5hPage.status') }}</th><th class="px-5 py-3">5h</th><th class="px-5 py-3">7d</th><th class="px-5 py-3">{{ t('admin.pressure5hPage.rejoin') }}</th></tr></thead><tbody class="divide-y divide-gray-100 dark:divide-dark-700"><tr v-for="account in overview.accounts" :key="account.account_id"><td class="px-5 py-3"><p class="font-medium text-gray-900 dark:text-white">{{ account.name }}</p><p class="text-xs text-gray-400">{{ account.platform }} · ID {{ account.account_id }}</p></td><td class="px-5 py-3"><span :class="account.included ? 'text-emerald-600' : 'text-amber-600'">{{ t(`admin.pressure5hPage.accountReasons.${account.reason}`) }}</span></td><td class="px-5 py-3">{{ formatWindow(account.five_hour_used_percent, account.five_hour_reset_at) }}</td><td class="px-5 py-3">{{ formatWindow(account.seven_day_used_percent, account.seven_day_reset_at) }}</td><td class="px-5 py-3">{{ formatTime(account.rejoin_at) }}</td></tr></tbody></table></div>
-          </section>
+          <Dynamic5hAccountWindows :accounts="overview.accounts" />
 
           <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
             <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</h2></div>
             <div v-if="overview.audit_logs.length === 0" class="p-5 text-sm text-gray-500">{{ t('admin.pressure5hPage.noAudit') }}</div>
-            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-2 px-5 py-3 text-sm md:grid-cols-[170px_1fr_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>{{ log.actor_email || `ID ${log.actor_user_id || '-'}` }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · 用户 {{ log.user_id }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span><span class="text-gray-500">{{ log.reason }}</span></div></div>
+            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-2 px-5 py-3 text-sm md:grid-cols-[170px_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>ID {{ log.actor_user_id || '-' }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · 用户 {{ log.user_id }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span></div></div>
           </section>
-        </template>
-      </template>
+        </div>
+      </div>
     </div>
   </AppLayout>
 </template>
@@ -71,6 +68,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
+import Dynamic5hAccountWindows from '@/components/common/Dynamic5hAccountWindows.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolicy } from '@/api/admin/dashboard'
@@ -79,7 +77,8 @@ import type { Dynamic5hAdminOverview, Dynamic5hAdminUserStatus } from '@/types'
 const { t } = useI18n()
 const overview = ref<Dynamic5hAdminOverview | null>(null)
 const loading = ref(false)
-const policyReasons = ref<Record<number, string>>({})
+const policyMultipliers = ref<Record<number, string | number>>({})
+const saving = ref(false)
 let timer: ReturnType<typeof setInterval> | undefined
 
 const metrics = computed(() => overview.value ? [
@@ -93,34 +92,49 @@ const metrics = computed(() => overview.value ? [
   { label: t('admin.pressure5hPage.thresholds'), value: `${(overview.value.pool.peak_threshold * 100).toFixed(0)}% / ${(overview.value.pool.normal_threshold * 100).toFixed(0)}%` },
 ] : [])
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
-const formatWindow = (used?: number, reset?: string) => used === undefined
-  ? '-'
-  : `${used.toFixed(1)}% · ${reset ? formatTime(reset) : t('common.now')}`
 const auditChange = (log: Dynamic5hAdminOverview['audit_logs'][number]) => log.action === 'usage_reset'
   ? `${(log.before_usage || 0).toFixed(2)} -> ${(log.after_usage || 0).toFixed(2)}`
   : `${log.old_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.old_policy?.multiplier || 1}x`} -> ${log.new_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.new_policy?.multiplier || 1}x`}`
-const load = async () => { loading.value = true; try { overview.value = await getDynamic5hPressureOverview() } finally { loading.value = false } }
-const updateMultiplier = async (user: Dynamic5hAdminUserStatus, event: Event) => {
-  const multiplier = Number((event.target as HTMLInputElement).value)
-  const reason = policyReasons.value[user.user_id]?.trim()
-  if (!Number.isFinite(multiplier) || multiplier <= 0 || !reason) { await load(); return }
-  await setDynamic5hUserPolicy(user.user_id, { exempt: user.exempt, multiplier, reason })
-  policyReasons.value[user.user_id] = ''
-  await load()
+const load = async () => {
+  if (loading.value) return
+  loading.value = true
+  try {
+    overview.value = await getDynamic5hPressureOverview()
+    for (const user of overview.value.users) {
+      policyMultipliers.value[user.user_id] ??= user.multiplier || 1
+    }
+  } finally { loading.value = false }
+}
+const validMultiplier = (user: Dynamic5hAdminUserStatus) => {
+  const value = Number(policyMultipliers.value[user.user_id])
+  return Number.isFinite(value) && value >= 0.01 && value !== (user.multiplier || 1)
+}
+const updateMultiplier = async (user: Dynamic5hAdminUserStatus) => {
+  if (saving.value || !validMultiplier(user)) return
+  const multiplier = Number(policyMultipliers.value[user.user_id])
+  if (!window.confirm(t('admin.pressure5hPage.applyConfirm', { user: user.user_id, before: user.multiplier || 1, after: multiplier }))) return
+  saving.value = true
+  try {
+    await setDynamic5hUserPolicy(user.user_id, { exempt: user.exempt, multiplier })
+    delete policyMultipliers.value[user.user_id]
+    await load()
+  } finally { saving.value = false }
 }
 const toggleExempt = async (user: Dynamic5hAdminUserStatus) => {
-  const reason = policyReasons.value[user.user_id]?.trim()
-  if (!reason) return
-  await setDynamic5hUserPolicy(user.user_id, { exempt: !user.exempt, multiplier: user.multiplier || 1, reason })
-  policyReasons.value[user.user_id] = ''
-  await load()
+  if (saving.value || !window.confirm(t('admin.pressure5hPage.exemptConfirm', { user: user.user_id }))) return
+  saving.value = true
+  try {
+    await setDynamic5hUserPolicy(user.user_id, { exempt: !user.exempt, multiplier: user.multiplier || 1 })
+    await load()
+  } finally { saving.value = false }
 }
 const resetUser = async (userId: number) => {
-  const reason = policyReasons.value[userId]?.trim()
-  if (!reason || !window.confirm(t('admin.pressure5hPage.resetConfirm'))) return
-  await resetDynamic5hUser(userId, reason)
-  policyReasons.value[userId] = ''
-  await load()
+  if (saving.value || !window.confirm(t('admin.pressure5hPage.resetConfirm'))) return
+  saving.value = true
+  try {
+    await resetDynamic5hUser(userId)
+    await load()
+  } finally { saving.value = false }
 }
 
 onMounted(() => { void load(); timer = setInterval(() => void load(), 30_000) })

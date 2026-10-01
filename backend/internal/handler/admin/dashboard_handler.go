@@ -27,11 +27,6 @@ type DashboardHandler struct {
 type Dynamic5hPolicyRequest struct {
 	Exempt     bool    `json:"exempt"`
 	Multiplier float64 `json:"multiplier"`
-	Reason     string  `json:"reason"`
-}
-
-type Dynamic5hResetRequest struct {
-	Reason string `json:"reason"`
 }
 
 // NewDashboardHandler creates a new admin dashboard handler
@@ -110,11 +105,7 @@ func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
 		response.BadRequest(c, "Multiplier must be a positive number")
 		return
 	}
-	if strings.TrimSpace(req.Reason) == "" {
-		response.BadRequest(c, "Reason is required")
-		return
-	}
-	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}, getAdminIDFromContext(c), req.Reason); err != nil {
+	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}, getAdminIDFromContext(c)); err != nil {
 		response.Error(c, 500, err.Error())
 		return
 	}
@@ -131,12 +122,7 @@ func (h *DashboardHandler) ResetDynamic5hUser(c *gin.Context) {
 		response.BadRequest(c, "Invalid user ID")
 		return
 	}
-	var req Dynamic5hResetRequest
-	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Reason) == "" {
-		response.BadRequest(c, "Reason is required")
-		return
-	}
-	if err := h.dynamic5hPressure.ResetUserUsage(c.Request.Context(), userID, getAdminIDFromContext(c), req.Reason); err != nil {
+	if err := h.dynamic5hPressure.ResetUserUsage(c.Request.Context(), userID, getAdminIDFromContext(c)); err != nil {
 		response.Error(c, 500, err.Error())
 		return
 	}

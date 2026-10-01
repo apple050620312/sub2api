@@ -68,6 +68,12 @@ export default {
   },
 
   dynamic5h: {
+    accountWindows: 'Account pool usage windows',
+    searchAccounts: 'Search account name or platform',
+    windowUnavailable: 'Window data unavailable',
+    noAccounts: 'No matching accounts',
+    updatedAt: 'Last updated',
+    stale: 'Data is stale; enforcement is paused',
     title: '5h Fair Usage',
     description: 'Dynamic fair share for the current rolling five-hour window',
     unavailable: 'Usage calibration is not ready yet.',
