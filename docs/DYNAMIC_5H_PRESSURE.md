@@ -25,6 +25,9 @@ demand than one with the same quota and a distant reset.
 
 An EWMA smooths short-lived changes. State transitions add hysteresis:
 
+The default entry/exit thresholds are 100% / 90%: pressure must reach 100%
+to enter Peak, then fall below 90% to return to Normal.
+
 | State | Entry | Exit |
 | --- | --- | --- |
 | Normal | default, or pressure below `normal_threshold` | pressure reaches `peak_threshold` |

@@ -229,7 +229,7 @@ gateway:
     enabled: true
     refresh_interval_seconds: 30
     peak_threshold: 1.0
-    normal_threshold: 1.0
+    normal_threshold: 0.9
     ewma_alpha: 0.35
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）

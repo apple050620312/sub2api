@@ -36,7 +36,7 @@ func TestLoadDynamic5hPressureDefaults(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, cfg.Gateway.Dynamic5hPressure.Enabled)
 	require.Equal(t, 1.0, cfg.Gateway.Dynamic5hPressure.PeakThreshold)
-	require.Equal(t, 1.0, cfg.Gateway.Dynamic5hPressure.NormalThreshold)
+	require.Equal(t, 0.9, cfg.Gateway.Dynamic5hPressure.NormalThreshold)
 }
 
 func TestLoadTimezonePrecedence(t *testing.T) {

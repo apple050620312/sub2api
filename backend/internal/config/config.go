@@ -2535,7 +2535,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.dynamic_5h_pressure.enabled", true)
 	viper.SetDefault("gateway.dynamic_5h_pressure.refresh_interval_seconds", 30)
 	viper.SetDefault("gateway.dynamic_5h_pressure.peak_threshold", 1.0)
-	viper.SetDefault("gateway.dynamic_5h_pressure.normal_threshold", 1.0)
+	viper.SetDefault("gateway.dynamic_5h_pressure.normal_threshold", 0.9)
 	viper.SetDefault("gateway.dynamic_5h_pressure.ewma_alpha", 0.35)
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
