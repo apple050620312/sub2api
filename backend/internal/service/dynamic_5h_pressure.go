@@ -225,10 +225,10 @@ func normalizeDynamic5hPressureConfig(c config.Dynamic5hPressureConfig) config.D
 		c.RefreshIntervalSeconds = 30
 	}
 	if c.PeakThreshold <= 0 {
-		c.PeakThreshold = 0.8
+		c.PeakThreshold = 1.0
 	}
-	if c.NormalThreshold <= 0 || c.NormalThreshold >= c.PeakThreshold {
-		c.NormalThreshold = 0.7
+	if c.NormalThreshold <= 0 || c.NormalThreshold > c.PeakThreshold {
+		c.NormalThreshold = 1.0
 	}
 	if c.EWMAAlpha <= 0 || c.EWMAAlpha > 1 {
 		c.EWMAAlpha = 0.35

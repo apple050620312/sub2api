@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
+    <div class="space-y-8">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.title') }}</h1>
@@ -32,8 +32,8 @@
             <div v-if="!overview.pool.calibration_ready" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.unavailable') }}</div>
             <div v-else-if="overview.users.length === 0" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-              <div v-for="user in overview.users" :key="user.user_id" class="grid gap-4 px-5 py-4 lg:grid-cols-[minmax(160px,0.8fr)_minmax(260px,2fr)_100px_170px_minmax(250px,auto)] lg:items-center">
-                <div><div class="flex flex-wrap items-center gap-2"><p class="font-medium text-gray-900 dark:text-white">{{ user.email || `用户 #${user.user_id}` }}</p><span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="user.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'">{{ t(`admin.pressure5hPage.${user.active ? 'active' : 'inactive'}`) }}</span></div><p class="text-xs text-gray-400">ID: {{ user.user_id }}</p></div>
+              <div v-for="user in overview.users" :key="user.user_id" class="grid gap-4 px-5 py-5 lg:grid-cols-[minmax(250px,1.2fr)_minmax(180px,1.3fr)_100px_170px_minmax(250px,auto)] lg:items-center">
+                <div class="min-w-0"><div class="flex flex-nowrap items-center gap-2"><p class="truncate font-medium text-gray-900 dark:text-white">{{ user.email || '用户' }}</p><span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium" :class="user.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'">{{ t(`admin.pressure5hPage.${user.active ? 'active' : 'inactive'}`) }}</span></div></div>
                 <Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" />
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.recover') }}</p><p class="text-sm text-gray-700 dark:text-gray-200">{{ formatTime(user.recover_at) }}</p></div>
@@ -51,11 +51,11 @@
           </section>
 
 
-          <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
-            <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</h2></div>
+          <details class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
+            <summary class="cursor-pointer list-none px-5 py-4 font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</summary>
             <div v-if="overview.audit_logs.length === 0" class="p-5 text-sm text-gray-500">{{ t('admin.pressure5hPage.noAudit') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-2 px-5 py-3 text-sm md:grid-cols-[170px_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>ID {{ log.actor_user_id || '-' }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · 用户 {{ log.user_id }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span></div></div>
-          </section>
+          </details>
         </div>
       </div>
     </div>

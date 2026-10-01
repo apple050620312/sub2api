@@ -14,7 +14,7 @@
         </tr></thead>
         <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
           <tr v-for="account in filtered" :key="account.account_id">
-            <td class="px-5 py-3"><p class="font-medium text-gray-900 dark:text-white">{{ account.name }}</p><p class="text-xs text-gray-400">{{ account.platform }} · #{{ account.account_id }}</p></td>
+            <td class="px-5 py-3"><p class="font-medium text-gray-900 dark:text-white">{{ account.name }}</p><p class="text-xs text-gray-400">{{ account.platform }}</p></td>
             <td class="px-5 py-3"><span :class="account.included ? 'text-emerald-600' : 'text-amber-600'">{{ t(`admin.pressure5hPage.accountReasons.${account.reason}`) }}</span></td>
             <td class="min-w-48 px-5 py-3"><Dynamic5hUsageBar v-if="account.five_hour_used_percent !== undefined" label="5h" :value="account.five_hour_used_percent" /><span v-else>{{ t('dynamic5h.windowUnavailable') }}</span><p class="mt-1 text-xs text-gray-500">{{ formatReset(account.five_hour_used_percent, account.five_hour_reset_at) }}</p></td>
             <td class="min-w-48 px-5 py-3"><Dynamic5hUsageBar v-if="account.seven_day_used_percent !== undefined" label="7d" :value="account.seven_day_used_percent" /><span v-else>{{ t('dynamic5h.windowUnavailable') }}</span><p class="mt-1 text-xs text-gray-500">{{ formatReset(account.seven_day_used_percent, account.seven_day_reset_at) }}</p></td>

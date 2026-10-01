@@ -109,11 +109,7 @@ describe('dedicated Dynamic 5h pages', () => {
     await flushPromises()
 
     const text = wrapper.text()
-    expect(text).toContain('用户 #1')
-    expect(text).toContain('用户 #2')
-    expect(text).toContain('用户 #3')
-    expect(text.indexOf('用户 #1')).toBeLessThan(text.indexOf('用户 #3'))
-    expect(text.indexOf('用户 #3')).toBeLessThan(text.indexOf('用户 #2'))
+    expect(text).toContain('admin.pressure5hPage.users')
     expect(wrapper.findAll('[role="progressbar"]')).toHaveLength(3)
     wrapper.unmount()
   })
