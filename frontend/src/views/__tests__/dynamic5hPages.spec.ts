@@ -118,7 +118,7 @@ describe('dedicated Dynamic 5h pages', () => {
     wrapper.unmount()
   })
 
-  it('shows a reset and unused account as available now', async () => {
+  it('keeps account pool usage out of the administrator page', async () => {
     getAdminOverview.mockResolvedValueOnce({
       pool: {
         enabled: true,
@@ -155,9 +155,8 @@ describe('dedicated Dynamic 5h pages', () => {
     const wrapper = mount(AdminDynamic5hPressureView, { global })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('0.0%')
-    expect(wrapper.text()).toContain('common.now')
-    expect(wrapper.text()).not.toContain('admin.pressure5hPage.accountReasons.snapshot_expired')
+    expect(wrapper.text()).not.toContain('idle after reset')
+    expect(wrapper.text()).not.toContain('admin.pressure5hPage.accountDiagnostics')
     wrapper.unmount()
   })
 })

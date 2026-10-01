@@ -2,7 +2,7 @@
   <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-dark-700">
       <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('dynamic5h.accountWindows') }}</h2>
-      <input v-model="search" class="input max-w-xs" :placeholder="t('dynamic5h.searchAccounts')" :aria-label="t('dynamic5h.searchAccounts')" />
+      <input v-model="search" class="input w-full sm:max-w-sm" :placeholder="t('dynamic5h.searchAccounts')" :aria-label="t('dynamic5h.searchAccounts')" />
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-left text-sm">

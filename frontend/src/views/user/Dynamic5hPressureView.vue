@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-5xl space-y-6">
+    <div class="mx-auto w-full max-w-7xl space-y-6 px-2 sm:px-4 xl:px-6">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('dynamic5h.title') }}</h1>
@@ -51,7 +51,7 @@
           </section>
         </div>
         <div v-if="status.enabled && status.pool">
-          <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             <div v-for="metric in poolMetrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-800">
               <p class="text-xs text-gray-500">{{ metric.label }}</p><p class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ metric.value }}</p>
             </div>

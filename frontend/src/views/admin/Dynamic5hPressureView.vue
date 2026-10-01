@@ -50,7 +50,6 @@
             </div>
           </section>
 
-          <Dynamic5hAccountWindows :accounts="overview.accounts" />
 
           <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
             <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</h2></div>
@@ -68,7 +67,6 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
-import Dynamic5hAccountWindows from '@/components/common/Dynamic5hAccountWindows.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolicy } from '@/api/admin/dashboard'

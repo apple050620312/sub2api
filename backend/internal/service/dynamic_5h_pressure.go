@@ -93,7 +93,7 @@ type Dynamic5hPublicPool struct {
 
 type Dynamic5hAdminUserStatus struct {
 	UserID int64  `json:"user_id"`
-	Email  string `json:"-"`
+	Email  string `json:"email"`
 	Active bool   `json:"active"`
 	Dynamic5hUserStatus
 }
