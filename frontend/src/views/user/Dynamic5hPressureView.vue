@@ -50,13 +50,16 @@
             </ul>
           </section>
         </div>
-        <div v-if="status.enabled && status.pool">
+        <div v-if="status.enabled && status.pool" class="space-y-5">
           <section class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
             <div v-for="metric in poolMetrics" :key="metric.label" class="rounded-lg border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-800">
               <p class="text-xs text-gray-500">{{ metric.label }}</p><p class="mt-2 text-xl font-semibold text-gray-900 dark:text-white">{{ metric.value }}</p>
             </div>
           </section>
-          <p class="text-sm text-gray-500">{{ t('dynamic5h.updatedAt') }}: {{ formatTime(status.pool.evaluated_at) }} <span v-if="status.pool.stale" class="text-amber-600">{{ t('dynamic5h.stale') }}</span></p>
+          <div class="rounded-lg border border-gray-200 bg-white px-5 py-4 text-sm text-gray-500 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400">
+            {{ t('dynamic5h.updatedAt') }}: {{ formatTime(status.pool.evaluated_at) }}
+            <span v-if="status.pool.stale" class="ml-2 text-amber-600">{{ t('dynamic5h.stale') }}</span>
+          </div>
           <Dynamic5hAccountWindows :accounts="status.pool.accounts" />
         </div>
       </div>
