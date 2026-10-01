@@ -62,6 +62,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=dynamic-5h-pressure
 
       - name: Promote verified digest
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
