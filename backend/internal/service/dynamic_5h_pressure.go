@@ -606,6 +606,9 @@ func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hA
 		protectedUsers = 1
 	}
 	fairShare := dynamic5hPlusBaseline(status)
+	if status.AccountCount == 0 {
+		fairShare = status.PoolCapacity / float64(protectedUsers)
+	}
 	overview.GuaranteedCapacityRatio = guaranteed / float64(protectedUsers)
 	for _, rawID := range rollingUserIDs {
 		userID, err := strconv.ParseInt(rawID, 10, 64)
@@ -1004,15 +1007,15 @@ func (s *Dynamic5hPressureService) currentFairShareForUser(ctx context.Context, 
 	if candidateID > 0 && !found && !policyFor(candidateID).Exempt {
 		count++
 	}
+	if status.AccountCount > 0 {
+		return dynamic5hPlusBaseline(status), true
+	}
 	if count == 0 {
 		count = 1
 	}
-	return dynamic5hPlusBaseline(status), true
+	return status.PoolCapacity / float64(count), true
 }
 
-// dynamic5hPlusBaseline treats one multiplier unit as one effective Plus
-// account's calibrated five-hour capacity. Usage remains a rolling five-hour
-// total; the account pool only supplies the current baseline capacity.
 func dynamic5hPlusBaseline(status Dynamic5hPressureStatus) float64 {
 	if status.AccountCount > 0 {
 		return status.PoolCapacity / float64(status.AccountCount)
