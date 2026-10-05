@@ -24,6 +24,16 @@ func TestDynamic5hPlusBaselineSamplesRealAccountWindows(t *testing.T) {
 	user := mustCreateUser(t, client, &service.User{Email: uuid.NewString() + "@example.com", PasswordHash: "hash"})
 	key := mustCreateApiKey(t, client, &service.APIKey{UserID: user.ID, Key: "sk-" + uuid.NewString(), Name: "baseline"})
 	account := mustCreateAccount(t, client, &service.Account{Name: "baseline-" + uuid.NewString(), Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth})
+	t.Cleanup(func() {
+		_, cleanupErr := integrationDB.ExecContext(ctx, "DELETE FROM usage_logs WHERE account_id=$1", account.ID)
+		require.NoError(t, cleanupErr)
+		_, cleanupErr = integrationDB.ExecContext(ctx, "DELETE FROM api_keys WHERE id=$1", key.ID)
+		require.NoError(t, cleanupErr)
+		_, cleanupErr = integrationDB.ExecContext(ctx, "DELETE FROM accounts WHERE id=$1", account.ID)
+		require.NoError(t, cleanupErr)
+		_, cleanupErr = integrationDB.ExecContext(ctx, "DELETE FROM users WHERE id=$1", user.ID)
+		require.NoError(t, cleanupErr)
+	})
 	usageRepo := NewUsageLogRepository(client, integrationDB)
 	origin := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
 	for index, capacity := range []float64{100, 120, 110} {
