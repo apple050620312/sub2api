@@ -67,6 +67,7 @@ func TestDynamic5hRefreshDoesNotShrinkBaselineWithCheapTraffic(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 100, status.PlusBaseline)
 	svc.policyRepo = nil
+	svc.accountRepo = nil
 	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 100)
 	status = svc.cachedStatus()
 	status.PlusBaseline = 100
@@ -86,8 +87,8 @@ func TestDynamic5hUncalibratedAndLegacySnapshotsNeverEnforce(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, status.CalibrationReady)
 	require.Zero(t, status.PoolCapacity)
-	require.NoError(t, svc.CheckUser(ctx, 1))
 	svc.accountRepo = nil
+	require.NoError(t, svc.CheckUser(ctx, 1))
 	cache := svc.cache.(*dynamic5hMemoryCache)
 	cache.status = Dynamic5hPressureStatus{Enabled: true, DataAvailable: true, CalibrationReady: true, State: Dynamic5hPressurePeak, PoolCapacity: 1, EvaluatedAt: now}
 	require.NoError(t, svc.CheckUser(ctx, 1))
