@@ -113,7 +113,7 @@ export default {
       recover: 'Recover',
       status: 'Status',
       noUsers: 'No active users in the current five-hour window.',
-      unavailable: 'Pool calibration is not ready yet.',
+      unavailable: 'Collecting 3 nearly complete Plus windows. Additional user limits remain off until calibration is ready.',
       disabled: 'Dynamic 5h pressure protection is disabled.',
       refresh: 'Refresh',
       policy: 'Policy',

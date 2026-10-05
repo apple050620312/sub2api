@@ -1955,6 +1955,7 @@ export interface DashboardStats {
 }
 
 export interface Dynamic5hPressureStatus {
+  calibration_samples?: number
   enabled: boolean
   data_available: boolean
   calibration_ready: boolean
@@ -1978,6 +1979,8 @@ export interface Dynamic5hPressureStatus {
 
 export interface Dynamic5hUserStatus {
 	pool?: {
+    calibration_ready?: boolean
+    calibration_samples?: number
     pressure: number
     account_count: number
     excluded_account_count: number

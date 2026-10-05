@@ -29,7 +29,7 @@
             <div class="border-b border-gray-200 px-6 py-5 dark:border-dark-700">
               <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.users') }}</h2>
             </div>
-            <div v-if="!overview.pool.calibration_ready" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.unavailable') }}</div>
+            <div v-if="!overview.pool.calibration_ready" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.unavailable') }} ({{ overview.pool.calibration_samples || 0 }} / 3)</div>
             <div v-else-if="overview.users.length === 0" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
               <div v-for="user in overview.users" :key="user.user_id" class="grid gap-6 px-6 py-9 lg:grid-cols-[minmax(250px,1.2fr)_minmax(180px,1.3fr)_100px_170px_minmax(250px,auto)] lg:items-center">

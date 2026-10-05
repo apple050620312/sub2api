@@ -52,6 +52,9 @@ type Dynamic5hPressureStatus struct {
 	BurnRatePerHour            float64                `json:"burn_rate_per_hour"`
 	ProjectedDemand            float64                `json:"projected_demand"`
 	PoolCapacity               float64                `json:"pool_capacity"`
+	PlusBaseline               float64                `json:"plus_baseline"`
+	CalibrationSamples         int                    `json:"calibration_samples"`
+	CalibrationVersion         int                    `json:"calibration_version"`
 	Episode                    int64                  `json:"episode"`
 	EvaluatedAt                time.Time              `json:"evaluated_at"`
 	Stale                      bool                   `json:"stale"`
@@ -81,6 +84,8 @@ type Dynamic5hUserStatus struct {
 }
 
 type Dynamic5hPublicPool struct {
+	CalibrationReady     bool                         `json:"calibration_ready"`
+	CalibrationSamples   int                          `json:"calibration_samples"`
 	Pressure             float64                      `json:"pressure"`
 	AccountCount         int                          `json:"account_count"`
 	ExcludedAccountCount int                          `json:"excluded_account_count"`
@@ -228,7 +233,7 @@ func normalizeDynamic5hPressureConfig(c config.Dynamic5hPressureConfig) config.D
 		c.PeakThreshold = 1.0
 	}
 	if c.NormalThreshold <= 0 || c.NormalThreshold > c.PeakThreshold {
-		c.NormalThreshold = 1.0
+		c.NormalThreshold = math.Min(0.9, c.PeakThreshold*0.9)
 	}
 	if c.EWMAAlpha <= 0 || c.EWMAAlpha > 1 {
 		c.EWMAAlpha = 0.35
@@ -316,19 +321,14 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 	}
 	activeUserIDs := s.activeUserIDs(ctx, now)
 	activeUsers := int64(len(activeUserIDs))
-	meterRate := s.recentMeterRate(ctx, now)
-	poolMeterUnits := 0.0
-	if burnPerHour > 0 && meterRate > 0 {
-		poolMeterUnits = float64(len(windows)) * meterRate / burnPerHour
-	}
-	if math.IsNaN(poolMeterUnits) || math.IsInf(poolMeterUnits, 0) {
-		poolMeterUnits = 0
-	}
+	baseline, samples := s.plusBaseline(ctx, accounts, now)
+	poolMeterUnits := float64(len(windows)) * baseline
 	status := Dynamic5hPressureStatus{
 		Enabled: true, DataAvailable: len(windows) > 0, CalibrationReady: poolMeterUnits > 0,
 		Pressure: pressure, RawPressure: raw, State: state, PeakActive: state == Dynamic5hPressurePeak,
 		AccountCount: len(windows), ActiveUserCount: activeUsers, RemainingCapacity: remaining,
 		BurnRatePerHour: burnPerHour, ProjectedDemand: projected, PoolCapacity: poolMeterUnits,
+		PlusBaseline: baseline, CalibrationSamples: samples, CalibrationVersion: 2,
 		Episode: episode, EvaluatedAt: now,
 		CapacityRecoveringNextHour: recoveringNextHour, ExcludedAccountCount: len(accounts) - len(windows), NextResetAt: nextResetAt,
 		PeakThreshold: s.cfg.PeakThreshold, NormalThreshold: s.cfg.NormalThreshold,
@@ -500,6 +500,7 @@ func (s *Dynamic5hPressureService) PublicUserStatus(ctx context.Context, userID 
 	status := s.AdminStatus(ctx, false)
 	result := s.userStatus(ctx, userID, status, s.now().UTC())
 	pool := &Dynamic5hPublicPool{Pressure: status.Pressure, AccountCount: status.AccountCount, ExcludedAccountCount: status.ExcludedAccountCount, ActiveUserCount: status.ActiveUserCount, Stale: status.Stale, EvaluatedAt: status.EvaluatedAt, NextResetAt: status.NextResetAt, Accounts: []Dynamic5hAccountDiagnostic{}}
+	pool.CalibrationReady, pool.CalibrationSamples = status.CalibrationReady, status.CalibrationSamples
 	if s.accountRepo != nil {
 		accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, "")
 		if err != nil {
@@ -930,45 +931,12 @@ func (s *Dynamic5hPressureService) rollingUserIDs(ctx context.Context, now time.
 	return ids
 }
 
-func (s *Dynamic5hPressureService) recentMeterRate(ctx context.Context, now time.Time) float64 {
-	if s.cache == nil {
-		return 0
-	}
-	bucketSeconds := int64(dynamic5hMeterBucket / time.Second)
-	latest := now.Unix() / bucketSeconds
-	count := int(dynamic5hWindow/dynamic5hMeterBucket) + 1
-	values, err := s.cache.MeterValues(ctx, latest, count)
-	if err != nil {
-		return 0
-	}
-	var total float64
-	first := -1
-	for i, value := range values {
-		if value <= 0 {
-			continue
-		}
-		if first < 0 {
-			first = i
-		}
-		total += value
-	}
-	if first < 0 || total <= 0 {
-		return 0
-	}
-	firstBucket := latest - int64(count-1-first)
-	observed := now.Sub(time.Unix(firstBucket*bucketSeconds, 0))
-	if observed < dynamic5hMeterBucket {
-		observed = dynamic5hMeterBucket
-	}
-	if observed > dynamic5hWindow {
-		observed = dynamic5hWindow
-	}
-	return total / observed.Hours()
-}
-
 func (s *Dynamic5hPressureService) currentFairShareForUser(ctx context.Context, status Dynamic5hPressureStatus, now time.Time, candidateID int64, snapshots ...map[int64]Dynamic5hUserPolicy) (float64, bool) {
 	if s.cache == nil || !status.CalibrationReady || status.PoolCapacity <= 0 {
 		return 0, false
+	}
+	if status.PlusBaseline > 0 {
+		return status.PlusBaseline, true
 	}
 	var policies map[int64]Dynamic5hUserPolicy
 	var err error
@@ -1017,6 +985,9 @@ func (s *Dynamic5hPressureService) currentFairShareForUser(ctx context.Context, 
 }
 
 func dynamic5hPlusBaseline(status Dynamic5hPressureStatus) float64 {
+	if status.PlusBaseline > 0 {
+		return status.PlusBaseline
+	}
 	if status.AccountCount > 0 {
 		return status.PoolCapacity / float64(status.AccountCount)
 	}
@@ -1095,6 +1066,7 @@ func (s *Dynamic5hPressureService) loadStatus(ctx context.Context) Dynamic5hPres
 }
 
 func (s *Dynamic5hPressureService) storeStatus(ctx context.Context, status Dynamic5hPressureStatus) {
+	status.CalibrationVersion = 2
 	s.mu.Lock()
 	s.status = status
 	s.mu.Unlock()

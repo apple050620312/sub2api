@@ -113,7 +113,7 @@ export default {
       recover: '预计恢复',
       status: '状态',
       noUsers: '目前 5h 窗口内没有活跃用户。',
-      unavailable: '池容量校准尚未完成。',
+      unavailable: 'Plus 基准校准尚未完成，正在采集 3 个近完整真实窗口。完成前不执行额外用户限流。',
       disabled: '动态 5h 压力保护已停用。',
       refresh: '刷新',
       policy: '策略',

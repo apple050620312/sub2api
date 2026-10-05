@@ -40,9 +40,8 @@ stops. Admission reads and reservations fail open on cache errors.
 ## Dynamic fair shares and borrowing
 
 The service records successful metered usage per user in rolling five-minute
-buckets in both Normal and Peak. It uses recent gateway demand to translate the
-effective account pool into the same internal meter units. No administrator
-configures a fixed money or token allowance.
+buckets in both Normal and Peak. The reference allowance is sampled from
+nearly complete real Plus windows and persisted independently of recent demand.
 
 Meter units are model-price-weighted cost. Prefer the precomputed upstream
 model `UsageLog.AccountStatsCost` when available, without applying the account
@@ -53,29 +52,44 @@ to customer pricing. Equal token counts on differently priced models
 therefore consume different shares. Missing, zero, or invalid prices do not
 fall back to raw tokens. This is a price-weighted estimate, not a claim that
 model list prices exactly match native subscription quota consumption.
-Native five-hour snapshots calibrate aggregate capacity; concurrent requests
-prevent reliably attributing a snapshot delta to one request. One `x1` multiplier
-is the calibrated five-hour capacity of one effective Plus account, calculated as
-the calibrated pool capacity divided by the effective account count. It does not
-depend on how many users are currently active. Usage remains a rolling five-hour
-total and expires by bucket.
+Calibration accepts only explicit Plus plans with matching account identity and
+fresh native snapshots. A sample begins at no more than 5% usage and ends at
+at least 95% in the same native window. Account-specific usage logs between
+those observations are summed using the same upstream price-cost formula as
+user metering, then divided by the observed quota fraction to estimate 100%.
+The endpoint waits two minutes for asynchronous usage logs. Three distinct
+account/window samples provide a median baseline, which is locked in PostgreSQL
+and reused across instances and restarts. Incomplete windows, resets, unknown
+plans, missing prices and mismatched identities cannot initialize the baseline.
+Before calibration, extra user enforcement fails open; native account gates
+remain active. Legacy aggregate-rate snapshots cannot enforce after upgrade.
+
+Users are not bound to a calibration account. Successful usage across all
+supported accounts is summed for that user. A `1x` allowance is one sampled
+Plus-equivalent price capacity. Neither cheaper recent traffic nor changes in
+active population shrink the denominator. Usage remains rolling for five hours
+and expires by bucket. Model prices remain estimates of native quota: external
+traffic on calibration accounts, delayed logs beyond two minutes, changes in
+provider quota or model-specific native weights can bias the samples. Use
+accounts dedicated to this gateway for calibration. Recalibration is not
+automatic after the reference is locked.
 
 Price-based Redis keys use a new `price_v1` namespace. Old token buckets are
 not converted or mixed with price-based usage; calibration warms up using new
 traffic, with enforcement unavailable until usable price-based capacity exists.
 
-At any instant, a user's fair share is the current effective five-hour pool
-capacity divided by the users with demand in the last fifteen minutes, including
-admitted pending requests. Usage itself remains rolling for five hours.
-This value is recalculated as capacity and population change. There is
-no Peak generation, fixed participant snapshot, or order-dependent allocation.
+At any instant, a user's allowance is the stored Plus baseline multiplied by
+their policy multiplier. Pending reservations also count during admission.
+The fifteen-minute active lease is for demand visibility, not the allowance
+denominator. Pool pressure remains a forecast of aggregate demand and may
+enter Peak before any individual account reaches 100%.
 
 Normal adds no restriction, so active users may borrow capacity left idle by
 others. When pressure enters Peak, the same rolling usage is compared with the
-current dynamic fair share. Users below their share continue; users at or above
+fixed calibrated allowance. Users below their share continue; users at or above
 it are denied only on subsequent requests. Successful usage is never revoked.
-A user joining during Peak immediately enters the denominator with zero usage
-and receives the same dynamic fair-share treatment as everyone else.
+A user joining during Peak starts with their own rolling usage and the same
+baseline. Arrivals and departures do not change anyone else's percentage.
 
 Returning to Normal immediately stops enforcement and permits borrowing again.
 Rolling usage is retained so a later Peak can still identify who consumed the
@@ -92,7 +106,7 @@ are shown in `deploy/config.example.yaml`.
   pool signal and its capacity inputs.
 - User: `GET /api/v1/user/5h-pressure` returns the current state, 5h usage
   percentage, remaining percentage, recovery time, and limited flag. `100%`
-  means the user's current dynamic fair share, so usage can exceed `100%`. It
+  means the user's calibrated allowance, so usage can exceed `100%`. It
   never exposes money, tokens, or internal capacity units.
 
 用户限额页面同时公开账号池压力、有效及排除账号数量、活跃用户数量、
@@ -109,6 +123,21 @@ are shown in `deploy/config.example.yaml`.
 
 The admin dashboard always displays the global signal and state. The user
 dashboard displays a warning only while a temporary Peak rolling limit applies.
+
+## 示例（假设采样得到 x1 基准为 100 个价格单位）
+
+| 场景 | 用户页面与限制 |
+| --- | --- |
+| 便宜模型每次消耗 0.1，完成 100 次 | 10%；不会因近期模型变便宜而缩小额度 |
+| 贵模型每次消耗 2，完成 40 次 | 80%；同样请求数量消耗更快 |
+| 请求分散到 6 支账号，共消耗 100 | 用户 100%；每支账号不必达到 100%，用户消耗合并计算 |
+| 其他用户加入或离开 | 当前用户百分比不变 |
+| 用户没有新增已完成用量，其他人增加号池压力 | 倍率不变时，用户百分比不升高；只会随滚动窗口到期下降 |
+| 倍率 x2，共消耗 100 | 50%；x2 额度是 200 |
+| 用户已消耗 120，号池正常 | 120%；允许继续借用，后续进入 Peak 才限制新请求 |
+| 用户已消耗 120，号池进入 Peak | 新请求受限；既有用量不追回 |
+| 基准尚未完成，即使预测压力很高 | 不执行额外用户限流；账号原生限制继续有效 |
+| 早期消耗离开滚动 5 小时窗口 | 百分比下降，恢复可用额度 |
 
 ## Freshness and policy snapshots
 
