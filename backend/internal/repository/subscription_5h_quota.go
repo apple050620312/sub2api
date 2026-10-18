@@ -8,7 +8,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-func (r *dynamic5hPolicyRepository) ReadSubscription5hQuota(ctx context.Context, userID int64, now time.Time, multiplier float64) (service.Subscription5hQuota, error) {
+func (r *dynamic5hPolicyRepository) ReadSubscription5hQuota(ctx context.Context, userID int64, now time.Time) (service.Subscription5hQuota, error) {
 	var result service.Subscription5hQuota
 	var recoverAt, lastUsedAt sql.NullTime
 	err := r.db.QueryRowContext(ctx, `WITH weekly AS (
@@ -32,10 +32,10 @@ func (r *dynamic5hPolicyRepository) ReadSubscription5hQuota(ctx context.Context,
 )
 SELECT (SELECT amount FROM weekly), COALESCE(MAX(total), 0),
   MIN(created_at + INTERVAL '5 hours') FILTER (
-    WHERE total < (SELECT amount FROM weekly)*0.15*$3
-       OR total-expired < (SELECT amount FROM weekly)*0.15*$3),
+    WHERE total < (SELECT amount FROM weekly)*0.15
+       OR total-expired < (SELECT amount FROM weekly)*0.15),
   MAX(created_at)
-FROM rolling`, userID, now, multiplier).Scan(&result.WeeklyLimitUSD, &result.UsageUSD, &recoverAt, &lastUsedAt)
+FROM rolling`, userID, now).Scan(&result.WeeklyLimitUSD, &result.UsageUSD, &recoverAt, &lastUsedAt)
 	if recoverAt.Valid {
 		result.RecoverAt = &recoverAt.Time
 	}

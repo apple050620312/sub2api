@@ -25,8 +25,24 @@ export interface OnboardingAccountSummary {
   name: string
   plan_type: string
   status: string
-  public_fallback: boolean
-  owner_source?: string
+  email: string
+  schedulable: boolean
+  paused: boolean
+  concurrency: number
+  created_at: string
+  updated_at: string
+  last_used_at?: string
+  expires_at?: string
+  auth_expires_at?: string
+  rate_limit_reset_at?: string
+  blocked_until?: string
+  groups: string[]
+  usage: {
+    five_hour_used_percent?: number
+    five_hour_reset_at?: string
+    seven_day_used_percent?: number
+    seven_day_reset_at?: string
+  }
 }
 
 export interface OnboardingDiscordBinding {
@@ -57,7 +73,6 @@ export interface OnboardingConfig {
   subscription_rules: Record<string, { group_id: number; validity_days: number; units: number }>
   openai_redirect_uri: string
   ccswitch_download_url: string
-  public_fallback_default: boolean
 }
 
 export interface OnboardingUserOverview {
@@ -70,6 +85,7 @@ export interface OnboardingUserOverview {
   ready_for_key: boolean
   ready_for_ccs: boolean
   config: OnboardingConfig
+  subscriptions: Array<{ group_name: string; status: string; expires_at: string }>
 }
 
 /**
@@ -255,6 +271,14 @@ export async function getDynamic5hPressure(): Promise<Dynamic5hUserStatus> {
 export async function getOnboardingOverview(): Promise<OnboardingUserOverview> {
   const { data } = await apiClient.get<OnboardingUserOverview>('/user/onboarding')
   return data
+}
+
+export async function setOnboardingAccountPaused(accountId: number, paused: boolean): Promise<void> {
+  await apiClient.patch(`/user/onboarding/accounts/${accountId}`, { paused })
+}
+
+export async function deleteOnboardingAccount(accountId: number): Promise<void> {
+  await apiClient.delete(`/user/onboarding/accounts/${accountId}`)
 }
 
 export async function startDiscordOnboarding(redirectUri?: string): Promise<{ auth_url: string }> {

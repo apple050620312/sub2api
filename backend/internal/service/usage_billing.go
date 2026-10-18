@@ -42,7 +42,6 @@ type UsageBillingCommand struct {
 	APIKeyQuotaCost     float64
 	APIKeyRateLimitCost float64
 	AccountQuotaCost    float64
-	Dynamic5hMeterUnits float64
 }
 
 func (c *UsageBillingCommand) Normalize() {
@@ -164,7 +163,6 @@ type AccountQuotaState struct {
 }
 
 type UsageBillingApplyResult struct {
-	Dynamic5hMeterEvent  *Dynamic5hMeterEvent
 	Applied              bool
 	APIKeyQuotaExhausted bool
 	NewBalance           *float64           // post-deduction balance (nil = no balance deduction)

@@ -1,14 +1,14 @@
 <template>
     <div class="w-full space-y-8">
-      <header class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+      <header class="card p-6">
         <p class="text-sm font-semibold text-primary-600 dark:text-primary-400">新用户引导</p>
-        <h1 class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">从绑定 Discord 到开始使用 Codex</h1>
+        <h2 class="mt-2 text-lg font-semibold text-gray-900 dark:text-white">接入并开始使用</h2>
         <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">按顺序完成下面四步。你的邮箱和 OAuth 令牌不会显示给其他用户。</p>
       </header>
 
       <div v-if="loading" class="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-500 dark:border-dark-700 dark:bg-dark-800">正在加载引导状态…</div>
       <template v-else>
-        <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <section class="card p-6">
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">第一步</p>
@@ -23,7 +23,7 @@
           <button class="btn btn-primary mt-4" :disabled="busy" @click="startDiscord">{{ overview?.discord ? '重新绑定 Discord' : '绑定 Discord' }}</button>
         </section>
 
-        <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <section class="card p-6">
           <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">第二步</p>
@@ -39,24 +39,29 @@
           <div v-if="oauthStart" class="mt-5 space-y-3 rounded-xl bg-gray-50 p-4 dark:bg-dark-700/50">
             <p class="text-sm text-gray-700 dark:text-gray-200">授权完成后，把回调地址粘贴到下面，系统会自动提取 code 和 state。</p>
             <a class="break-all text-sm text-primary-600 hover:underline" :href="oauthStart.auth_url" target="_blank" rel="noreferrer">重新打开授权页面</a>
-            <textarea v-model="callbackURL" class="form-input min-h-20 w-full" placeholder="粘贴 http://localhost:1455/auth/callback?code=...&state=..."></textarea>
+            <textarea v-model="callbackURL" class="input min-h-20 w-full" placeholder="粘贴 http://localhost:1455/auth/callback?code=...&state=..."></textarea>
             <button class="btn btn-primary" :disabled="busy || !callbackURL || !oauthSessionID" @click="completeOpenAI">提交回调并绑定账号</button>
           </div>
-          <div v-if="overview?.accounts.length" class="mt-5 grid gap-3 sm:grid-cols-2">
-            <div v-for="account in overview.accounts" :key="account.id" class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
-              <p class="font-medium text-gray-900 dark:text-white">{{ account.name }}</p>
-              <p class="mt-1 text-sm text-gray-500">{{ account.plan_type || '未知套餐' }} · {{ account.status }}</p>
-            </div>
+          <div class="mt-6">
+            <DataTable :columns="accountColumns" :data="overview?.accounts || []" row-key="id" :actions-count="3">
+              <template #cell-name="{ row }"><p class="font-medium">{{ row.name }}</p><p class="mt-1 text-xs text-gray-500">{{ row.email || '未提供邮箱' }}</p></template>
+              <template #cell-status="{ row }"><StatusBadge :status="row.paused ? 'inactive' : row.status" :label="row.paused ? '已暂停' : row.status === 'active' ? '正常' : row.status === 'error' ? '需要处理' : '已停用'" /></template>
+              <template #cell-actions="{ row }"><div class="flex flex-wrap gap-2"><button class="btn btn-secondary btn-sm" @click="detail = row">详情</button><button class="btn btn-secondary btn-sm" :disabled="busy || (!row.paused && row.status !== 'active')" @click="askAccountAction(row, row.paused ? 'resume' : 'pause')">{{ row.paused ? '恢复' : '暂停' }}</button><button class="btn btn-danger btn-sm" :disabled="busy" @click="askAccountAction(row, 'delete')">删除</button></div></template>
+            </DataTable>
+            <p class="mt-4 text-sm leading-6 text-gray-500">账号优先服务你自己，忙碌时自动使用公共池。暂停或删除账号会重新计算自动订阅资格；恢复账号不会重置用量或延长原有效期。</p>
+          </div>
+          <div v-if="overview?.subscriptions?.length" class="mt-6 space-y-3 border-t border-gray-100 pt-6 dark:border-dark-700">
+            <h3 class="font-medium">当前订阅</h3><div v-for="subscription in overview.subscriptions" :key="subscription.group_name" class="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{{ subscription.group_name }}</span><StatusBadge :status="subscription.status" :label="subscription.status === 'active' ? '有效' : subscription.status === 'suspended' ? '已暂停' : '已到期'" /><span class="text-gray-500">到期：{{ new Date(subscription.expires_at).toLocaleString() }}</span></div>
           </div>
         </section>
 
-        <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <section class="card p-6">
           <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">第三步</p>
           <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">创建 API Key</h2>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">使用这个 Key 连接 CC Switch。完整 Key 只会在创建成功后显示一次。</p>
           <div class="mt-4 flex flex-wrap gap-3">
-            <input v-model="keyName" class="form-input w-full sm:w-72" placeholder="例如：我的 Codex" />
-            <select v-model="keyGroupID" class="form-input w-full sm:w-64" aria-label="API Key 订阅分组"><option v-for="group in keyGroups" :key="group.id" :value="group.id">{{ group.name }}</option></select>
+            <input v-model="keyName" class="input w-full sm:w-72" placeholder="例如：我的 Codex" />
+            <Select v-model="keyGroupID" class="w-full sm:w-64" :options="keyGroups.map(group => ({ value: group.id, label: group.name }))" aria-label="API Key 订阅分组" />
             <button class="btn btn-primary" :disabled="busy || !overview?.ready_for_key || !keyName.trim() || !keyGroupID" @click="createKey">创建 API Key</button>
           </div>
           <p v-if="overview?.ready_for_key && !keyGroups.length" class="mt-3 text-sm text-amber-600">暂无可用的 OpenAI 分组，请联系管理员配置订阅分配。</p>
@@ -66,7 +71,7 @@
           </div>
         </section>
 
-        <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
+        <section class="card p-6">
           <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">第四步</p>
           <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">下载并配置 CC Switch</h2>
           <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm leading-6 text-gray-600 dark:text-gray-300">
@@ -81,6 +86,8 @@
           <p v-if="!createdKey" class="mt-3 text-sm text-amber-600">创建 API Key 后才会生成导入链接。</p>
         </section>
       </template>
+      <ServiceAccountDetails :account="detail" @close="detail = null" />
+      <ConfirmDialog :show="!!confirmation" :title="confirmation?.title || ''" :message="confirmation?.message || ''" :danger="confirmation?.action === 'delete'" @cancel="confirmation = null" @confirm="confirmAccountAction" />
     </div>
 </template>
 
@@ -94,6 +101,9 @@ import {
   getOnboardingOverview,
   startDiscordOnboarding,
   startOpenAIOnboarding,
+  setOnboardingAccountPaused,
+  deleteOnboardingAccount,
+  type OnboardingAccountSummary,
   type OnboardingOAuthStart,
   type OnboardingUserOverview,
 } from '@/api/user'
@@ -101,6 +111,12 @@ import { keysAPI } from '@/api/keys'
 import { userGroupsAPI } from '@/api/groups'
 import type { Group } from '@/types'
 import { buildCcSwitchImportDeeplink, CC_SWITCH_USAGE_SCRIPT } from '@/utils/ccswitchImport'
+import DataTable from '@/components/common/DataTable.vue'
+import Select from '@/components/common/Select.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import ServiceAccountDetails from '@/components/common/ServiceAccountDetails.vue'
+import { useAppStore } from '@/stores/app'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,12 +130,33 @@ const keyName = ref('我的 Codex')
 const keyGroups = ref<Group[]>([])
 const keyGroupID = ref<number>()
 const createdKey = ref('')
+const app = useAppStore()
+const detail = ref<OnboardingAccountSummary | null>(null)
+const accountColumns = [{ key: 'name', label: 'GPT 账号' }, { key: 'plan_type', label: '套餐' }, { key: 'status', label: '状态' }, { key: 'actions', label: '操作' }]
+const confirmation = ref<{ account: OnboardingAccountSummary; action: 'pause' | 'resume' | 'delete'; title: string; message: string } | null>(null)
+const reportError = (error: unknown) => app.showError((error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof TypeError ? '回调链接格式无效，请粘贴完整的回调地址' : '操作失败，请稍后重试'))
+function askAccountAction(account: OnboardingAccountSummary, action: 'pause' | 'resume' | 'delete') {
+  const label = { pause: '暂停', resume: '恢复', delete: '删除' }[action]
+  confirmation.value = { account, action, title: `确认${label}账号`, message: `确定${label}“${account.name}”（${account.email || account.plan_type}）？自动订阅资格会同步更新。${action === 'delete' ? '删除后需要重新授权才能添加。' : '订阅用量和原有效期保持不变。'}` }
+}
+async function confirmAccountAction() {
+  const pending = confirmation.value
+  if (!pending || busy.value) return
+  confirmation.value = null
+  busy.value = true
+  try {
+    if (pending.action === 'delete') await deleteOnboardingAccount(pending.account.id)
+    else await setOnboardingAccountPaused(pending.account.id, pending.action === 'pause')
+    await load()
+    app.showSuccess('账号及订阅已更新')
+  } catch (error) { reportError(error) } finally { busy.value = false }
+}
 
 const redirectURI = computed(() => `${window.location.origin}/onboarding`)
 const importURL = computed(() => {
   if (!createdKey.value) return ''
   return buildCcSwitchImportDeeplink({
-    baseUrl: buildGatewayUrl('/v1'),
+    baseUrl: buildGatewayUrl(''),
     clientType: 'gemini',
     providerName: 'Sub2API Codex',
     apiKey: createdKey.value,
@@ -141,7 +178,7 @@ async function load() {
     if (!keyGroups.value.some(group => group.id === keyGroupID.value)) {
       keyGroupID.value = (keyGroups.value.find(group => group.subscription_type === 'subscription') || keyGroups.value[0])?.id
     }
-  } finally {
+  } catch (error) { reportError(error) } finally {
     loading.value = false
   }
 }
@@ -151,7 +188,7 @@ async function startDiscord() {
   try {
     const result = await startDiscordOnboarding(redirectURI.value)
     window.location.href = result.auth_url
-  } finally {
+  } catch (error) { reportError(error) } finally {
     busy.value = false
   }
 }
@@ -165,25 +202,28 @@ async function completeDiscord() {
     await completeDiscordOnboarding({ code, state, redirect_uri: redirectURI.value })
     await router.replace('/service-center')
     await load()
-  } finally {
+  } catch (error) { reportError(error) } finally {
     busy.value = false
   }
 }
 
 async function startOpenAI() {
   busy.value = true
+  const popup = window.open('about:blank', '_blank')
   try {
     oauthStart.value = await startOpenAIOnboarding(redirectURI.value)
     oauthSessionID.value = oauthStart.value.session_id
-  } finally {
+    if (popup) { popup.opener = null; popup.location.href = oauthStart.value.auth_url }
+  } catch (error) { popup?.close(); reportError(error) } finally {
     busy.value = false
   }
 }
 
 async function completeOpenAI() {
-  const parsed = new URL(callbackURL.value.trim())
   busy.value = true
   try {
+    const parsed = new URL(callbackURL.value.trim())
+    if (!parsed.searchParams.get('code') || !parsed.searchParams.get('state')) throw new TypeError('invalid callback')
     await completeOpenAIOnboarding({
       session_id: oauthSessionID.value,
       code: parsed.searchParams.get('code') || '',
@@ -194,7 +234,7 @@ async function completeOpenAI() {
     oauthStart.value = null
     callbackURL.value = ''
     await load()
-  } finally {
+  } catch (error) { reportError(error) } finally {
     busy.value = false
   }
 }
@@ -206,7 +246,7 @@ async function createKey() {
     const key = await keysAPI.create(keyName.value.trim(), keyGroupID.value)
     createdKey.value = key.key
     await load()
-  } finally {
+  } catch (error) { reportError(error) } finally {
     busy.value = false
   }
 }

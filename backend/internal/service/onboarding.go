@@ -7,10 +7,12 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +28,7 @@ const (
 	onboardingPublicFallbackExtraKey = "onboarding_public_fallback"
 	onboardingManagedNotes           = "onboarding-managed"
 	onboardingStateTTL               = 10 * time.Minute
+	onboardingPausedExtraKey         = "onboarding_user_paused"
 )
 
 var (
@@ -58,13 +61,12 @@ type OnboardingSubscriptionRule struct {
 
 // OnboardingConfig contains all public onboarding configuration.
 type OnboardingConfig struct {
-	Enabled               bool                                  `json:"enabled"`
-	Discord               OnboardingDiscordConfig               `json:"discord"`
-	PlanUnits             map[string]int                        `json:"plan_units"`
-	SubscriptionRules     map[string]OnboardingSubscriptionRule `json:"subscription_rules"`
-	OpenAIRedirectURI     string                                `json:"openai_redirect_uri"`
-	CCSwitchDownloadURL   string                                `json:"ccswitch_download_url"`
-	PublicFallbackDefault bool                                  `json:"public_fallback_default"`
+	Enabled             bool                                  `json:"enabled"`
+	Discord             OnboardingDiscordConfig               `json:"discord"`
+	PlanUnits           map[string]int                        `json:"plan_units"`
+	SubscriptionRules   map[string]OnboardingSubscriptionRule `json:"subscription_rules"`
+	OpenAIRedirectURI   string                                `json:"openai_redirect_uri"`
+	CCSwitchDownloadURL string                                `json:"ccswitch_download_url"`
 }
 
 type onboardingStoredConfig struct {
@@ -86,24 +88,42 @@ type OnboardingDiscordBinding struct {
 }
 
 type OnboardingAccountSummary struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	PlanType    string `json:"plan_type"`
-	Status      string `json:"status"`
-	Public      bool   `json:"public_fallback"`
-	OwnerSource string `json:"owner_source,omitempty"`
+	ID            int64                      `json:"id"`
+	Name          string                     `json:"name"`
+	Email         string                     `json:"email"`
+	PlanType      string                     `json:"plan_type"`
+	Status        string                     `json:"status"`
+	Schedulable   bool                       `json:"schedulable"`
+	Paused        bool                       `json:"paused"`
+	Concurrency   int                        `json:"concurrency"`
+	CreatedAt     time.Time                  `json:"created_at"`
+	UpdatedAt     time.Time                  `json:"updated_at"`
+	LastUsedAt    *time.Time                 `json:"last_used_at,omitempty"`
+	ExpiresAt     *time.Time                 `json:"expires_at,omitempty"`
+	AuthExpiresAt *time.Time                 `json:"auth_expires_at,omitempty"`
+	RateLimitAt   *time.Time                 `json:"rate_limit_reset_at,omitempty"`
+	BlockedUntil  *time.Time                 `json:"blocked_until,omitempty"`
+	Groups        []string                   `json:"groups"`
+	Usage         Dynamic5hAccountDiagnostic `json:"usage"`
+}
+
+type OnboardingSubscriptionSummary struct {
+	GroupName string    `json:"group_name"`
+	Status    string    `json:"status"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 type OnboardingUserOverview struct {
-	Discord         *OnboardingDiscordBinding  `json:"discord,omitempty"`
-	DiscordRequired bool                       `json:"discord_required"`
-	Accounts        []OnboardingAccountSummary `json:"accounts"`
-	AccountUnits    int                        `json:"account_units"`
-	ApiKeyCount     int64                      `json:"api_key_count"`
-	ReadyForAccount bool                       `json:"ready_for_account"`
-	ReadyForKey     bool                       `json:"ready_for_key"`
-	ReadyForCCS     bool                       `json:"ready_for_ccs"`
-	Config          OnboardingConfig           `json:"config"`
+	Discord         *OnboardingDiscordBinding       `json:"discord,omitempty"`
+	DiscordRequired bool                            `json:"discord_required"`
+	Accounts        []OnboardingAccountSummary      `json:"accounts"`
+	AccountUnits    int                             `json:"account_units"`
+	ApiKeyCount     int64                           `json:"api_key_count"`
+	ReadyForAccount bool                            `json:"ready_for_account"`
+	ReadyForKey     bool                            `json:"ready_for_key"`
+	ReadyForCCS     bool                            `json:"ready_for_ccs"`
+	Config          OnboardingConfig                `json:"config"`
+	Subscriptions   []OnboardingSubscriptionSummary `json:"subscriptions"`
 }
 
 type OnboardingAdminUser struct {
@@ -154,7 +174,7 @@ func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredCo
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("onboarding database is unavailable")
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT config FROM onboarding_config WHERE id = 1`)
+	rows, err := s.client(ctx).QueryContext(ctx, `SELECT config FROM onboarding_config WHERE id = 1`)
 	if err != nil {
 		return nil, err
 	}
@@ -182,10 +202,16 @@ func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredCo
 		stored.SubscriptionRules = map[string]OnboardingSubscriptionRule{}
 	}
 	if stored.DiscordClientSecretEncrypted != "" && s.encryptor != nil {
-		stored.Discord.ClientSecret, _ = s.encryptor.Decrypt(stored.DiscordClientSecretEncrypted)
+		stored.Discord.ClientSecret, err = s.encryptor.Decrypt(stored.DiscordClientSecretEncrypted)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt Discord client secret: %w", err)
+		}
 	}
 	if stored.DiscordBotTokenEncrypted != "" && s.encryptor != nil {
-		stored.Discord.BotToken, _ = s.encryptor.Decrypt(stored.DiscordBotTokenEncrypted)
+		stored.Discord.BotToken, err = s.encryptor.Decrypt(stored.DiscordBotTokenEncrypted)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt Discord bot token: %w", err)
+		}
 	}
 	stored.Discord.ClientSecretSet = stored.Discord.ClientSecret != ""
 	stored.Discord.BotTokenSet = stored.Discord.BotToken != ""
@@ -223,6 +249,23 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	if next.SubscriptionRules == nil {
 		next.SubscriptionRules = current.SubscriptionRules
 	}
+	for plan, units := range next.PlanUnits {
+		if normalizeOnboardingPlan(plan) != plan || units < 0 || units > 1000 {
+			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "套餐单位必须在 0 到 1000 之间")
+		}
+	}
+	for _, rule := range next.SubscriptionRules {
+		if rule.GroupID == 0 {
+			continue
+		}
+		if rule.GroupID < 0 || rule.ValidityDays < 1 || rule.ValidityDays > MaxValidityDays || rule.Units < 1 || rule.Units > 1000 {
+			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "订阅规则的有效期和消耗单位必须为正数")
+		}
+		group, err := s.admin.GetGroup(ctx, rule.GroupID)
+		if err != nil || group == nil || group.Platform != PlatformOpenAI || group.SubscriptionType != SubscriptionTypeSubscription || group.Status != StatusActive {
+			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "请选择有效的 OpenAI 订阅分组")
+		}
+	}
 	if strings.TrimSpace(next.Discord.ClientSecret) == "" {
 		next.Discord.ClientSecret = current.Discord.ClientSecret
 	}
@@ -252,7 +295,56 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	if err != nil {
 		return OnboardingConfig{}, err
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE onboarding_config SET config = $1::jsonb, updated_at = NOW() WHERE id = 1`, payload); err != nil {
+	tx, err := s.db.Tx(ctx)
+	if err != nil {
+		return OnboardingConfig{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	ctx = dbent.NewTxContext(ctx, tx)
+	if _, err := tx.Client().ExecContext(ctx, `UPDATE onboarding_config SET config = $1::jsonb, updated_at = NOW() WHERE id = 1`, payload); err != nil {
+		return OnboardingConfig{}, err
+	}
+	accounts, err := s.listOpenAIAccounts(ctx)
+	if err != nil {
+		return OnboardingConfig{}, err
+	}
+	owners := make(map[int64]struct{})
+	for _, account := range accounts {
+		if owner := accountOwnerID(account); owner > 0 {
+			owners[owner] = struct{}{}
+		}
+	}
+	rows, err := s.client(ctx).QueryContext(ctx, `SELECT DISTINCT user_id FROM user_subscriptions WHERE deleted_at IS NULL AND notes LIKE 'onboarding-managed:%'`)
+	if err != nil {
+		return OnboardingConfig{}, err
+	}
+	for rows.Next() {
+		var owner int64
+		if err := rows.Scan(&owner); err != nil {
+			_ = rows.Close()
+			return OnboardingConfig{}, err
+		}
+		owners[owner] = struct{}{}
+	}
+	rowsErr := rows.Err()
+	_ = rows.Close()
+	if rowsErr != nil {
+		return OnboardingConfig{}, rowsErr
+	}
+	ownerIDs := make([]int64, 0, len(owners))
+	for owner := range owners {
+		ownerIDs = append(ownerIDs, owner)
+	}
+	sort.Slice(ownerIDs, func(first, second int) bool { return ownerIDs[first] < ownerIDs[second] })
+	for _, owner := range ownerIDs {
+		if _, err := tx.Client().ExecContext(ctx, `SELECT id FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, owner); err != nil {
+			return OnboardingConfig{}, err
+		}
+		if err := s.reconcileSubscriptions(ctx, owner); err != nil {
+			return OnboardingConfig{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return OnboardingConfig{}, err
 	}
 	return publicOnboardingConfig(&stored), nil
@@ -334,11 +426,6 @@ func accountOwnerID(account Account) int64 {
 	}
 }
 
-func accountPublicFallback(account Account) bool {
-	flag, _ := account.Extra[onboardingPublicFallbackExtraKey].(bool)
-	return flag
-}
-
 func onboardingAccountOwnerUserID(account *Account) int64 {
 	if account == nil {
 		return 0
@@ -350,7 +437,7 @@ func onboardingAccountIsPublic(account *Account) bool {
 	if account == nil {
 		return false
 	}
-	return onboardingAccountOwnerUserID(account) == 0 || accountPublicFallback(*account)
+	return true
 }
 
 func onboardingAccountBelongsToUser(account *Account, userID int64) bool {
@@ -358,10 +445,18 @@ func onboardingAccountBelongsToUser(account *Account, userID int64) bool {
 }
 
 func onboardingAccountAllowedForUser(account *Account, userID int64) bool {
-	if userID <= 0 {
-		return true
+	return onboardingAccountIsPublic(account)
+}
+
+func partitionOnboardingAccounts(accounts []*Account, userID int64) (owned, public []*Account) {
+	for _, account := range accounts {
+		if onboardingAccountBelongsToUser(account, userID) {
+			owned = append(owned, account)
+		} else if account != nil {
+			public = append(public, account)
+		}
 	}
-	return onboardingAccountBelongsToUser(account, userID) || onboardingAccountIsPublic(account)
+	return owned, public
 }
 
 func normalizeOnboardingPlan(value string) string {
@@ -383,7 +478,7 @@ func normalizeOnboardingPlan(value string) string {
 
 func onboardingPlanUnits(plan string, configured map[string]int) int {
 	plan = normalizeOnboardingPlan(plan)
-	if units := configured[plan]; units > 0 {
+	if units, ok := configured[plan]; ok {
 		return units
 	}
 	switch plan {
@@ -397,7 +492,7 @@ func onboardingPlanUnits(plan string, configured map[string]int) int {
 }
 
 func (s *OnboardingService) listUserAccounts(ctx context.Context, userID int64) ([]Account, int, error) {
-	accounts, _, err := s.admin.ListAccounts(ctx, 1, 1000, PlatformOpenAI, AccountTypeOAuth, "", "", 0, "", "created_at", "asc")
+	accounts, err := s.listOpenAIAccounts(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -412,11 +507,65 @@ func (s *OnboardingService) listUserAccounts(ctx context.Context, userID int64) 
 			continue
 		}
 		owned = append(owned, account)
-		if account.Status == StatusActive {
+		if onboardingAccountContributes(account, time.Now()) {
 			units += onboardingPlanUnits(account.GetCredential("plan_type"), stored.PlanUnits)
 		}
 	}
 	return owned, units, nil
+}
+
+func (s *OnboardingService) client(ctx context.Context) *dbent.Client {
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	return s.db
+}
+
+func (s *OnboardingService) listOpenAIAccounts(ctx context.Context) ([]Account, error) {
+	accounts := make([]Account, 0)
+	for page := 1; ; page++ {
+		batch, total, err := s.admin.ListAccounts(ctx, page, 200, PlatformOpenAI, AccountTypeOAuth, "", "", 0, "", "id", "asc")
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, batch...)
+		if len(batch) == 0 || int64(len(accounts)) >= total {
+			return accounts, nil
+		}
+	}
+}
+
+func onboardingAccountContributes(account Account, now time.Time) bool {
+	paused, _ := account.Extra[onboardingPausedExtraKey].(bool)
+	return account.Status == StatusActive && account.Schedulable && !paused &&
+		(!account.AutoPauseOnExpired || account.ExpiresAt == nil || account.ExpiresAt.After(now))
+}
+
+func onboardingAccountSummary(account Account) OnboardingAccountSummary {
+	paused, _ := account.Extra[onboardingPausedExtraKey].(bool)
+	result := OnboardingAccountSummary{
+		ID: account.ID, Name: account.Name, Email: account.GetCredential("email"),
+		PlanType: normalizeOnboardingPlan(account.GetCredential("plan_type")), Status: account.Status,
+		Schedulable: account.Schedulable, Paused: paused, Concurrency: account.Concurrency,
+		CreatedAt: account.CreatedAt, UpdatedAt: account.UpdatedAt, LastUsedAt: account.LastUsedAt,
+		ExpiresAt: account.ExpiresAt, RateLimitAt: account.RateLimitResetAt,
+		BlockedUntil: account.TempUnschedulableUntil, Groups: []string{},
+		Usage: dynamic5hAccountDiagnostic(&account, time.Now().UTC()),
+	}
+	for _, group := range account.Groups {
+		if group != nil {
+			result.Groups = append(result.Groups, group.Name)
+		}
+	}
+	if raw := account.GetCredential("expires_at"); raw != "" {
+		if expires, err := time.Parse(time.RFC3339, raw); err == nil {
+			result.AuthExpiresAt = &expires
+		} else if seconds, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			expires := time.Unix(seconds, 0).UTC()
+			result.AuthExpiresAt = &expires
+		}
+	}
+	return result
 }
 
 func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (*OnboardingUserOverview, error) {
@@ -434,17 +583,33 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 	}
 	_, keyCount, keyErr := s.admin.GetUserAPIKeys(ctx, userID, 1, 1, "created_at", "desc")
 	if keyErr != nil {
-		keyCount = 0
+		return nil, keyErr
 	}
 	summaries := make([]OnboardingAccountSummary, 0, len(accounts))
 	for _, account := range accounts {
-		summaries = append(summaries, OnboardingAccountSummary{ID: account.ID, Name: account.Name, PlanType: normalizeOnboardingPlan(account.GetCredential("plan_type")), Status: account.Status, Public: accountPublicFallback(account), OwnerSource: fmt.Sprint(account.Extra["onboarding_owner_source"])})
+		summaries = append(summaries, onboardingAccountSummary(account))
+	}
+	subscriptions := make([]OnboardingSubscriptionSummary, 0)
+	readyForKey := false
+	if s.subscriptions != nil {
+		subs, err := s.subscriptions.ListUserSubscriptions(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		for _, sub := range subs {
+			if sub.Group == nil || sub.Group.Platform != PlatformOpenAI {
+				continue
+			}
+			subscriptions = append(subscriptions, OnboardingSubscriptionSummary{GroupName: sub.Group.Name, Status: sub.Status, ExpiresAt: sub.ExpiresAt})
+			readyForKey = readyForKey || sub.IsActive()
+		}
 	}
 	return &OnboardingUserOverview{
 		Discord: binding, DiscordRequired: true, Accounts: summaries, AccountUnits: units,
 		ApiKeyCount: keyCount, ReadyForAccount: binding != nil && binding.Status == "active",
-		ReadyForKey: binding != nil && binding.Status == "active" && len(summaries) > 0,
+		ReadyForKey: binding != nil && binding.Status == "active" && readyForKey,
 		ReadyForCCS: keyCount > 0, Config: publicOnboardingConfig(stored),
+		Subscriptions: subscriptions,
 	}, nil
 }
 
@@ -500,7 +665,7 @@ func (s *OnboardingService) StartDiscord(ctx context.Context, userID int64, redi
 		redirectURI = stored.Discord.RedirectURI
 	}
 	if strings.TrimSpace(redirectURI) == "" {
-		return "", infraerrors.BadRequest("DISCORD_REDIRECT_URI_REQUIRED", "Discord redirect URI is required")
+		return "", infraerrors.BadRequest("DISCORD_REDIRECT_URI_REQUIRED", "请先配置 Discord 回调地址")
 	}
 	state, err := s.signState(userID, "discord")
 	if err != nil {
@@ -517,7 +682,7 @@ func decodeJSONResponse(resp *http.Response, target any) error {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("upstream returned HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("Discord 请求失败（HTTP %d），请检查应用配置、机器人权限和成员列表权限", resp.StatusCode)
 	}
 	if target == nil || len(body) == 0 {
 		return nil
@@ -555,7 +720,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 		return nil, err
 	}
 	if token.AccessToken == "" {
-		return nil, fmt.Errorf("discord returned no access token")
+		return nil, fmt.Errorf("Discord 未返回授权令牌，请重新授权")
 	}
 	userReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://discord.com/api/users/@me", nil)
 	userReq.Header.Set("Authorization", "Bearer "+token.AccessToken)
@@ -571,7 +736,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 		return nil, err
 	}
 	if discordUser.ID == "" {
-		return nil, fmt.Errorf("discord returned no user id")
+		return nil, fmt.Errorf("Discord 未返回用户身份，请重新授权")
 	}
 	joinURL := "https://discord.com/api/guilds/" + url.PathEscape(stored.Discord.GuildID) + "/members/" + url.PathEscape(discordUser.ID)
 	joinBody, _ := json.Marshal(map[string]string{"access_token": token.AccessToken})
@@ -583,7 +748,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 		return nil, err
 	}
 	if err := decodeJSONResponse(joinResp, nil); err != nil {
-		return nil, fmt.Errorf("join Discord server: %w", err)
+		return nil, fmt.Errorf("加入 Discord 服务器失败：%w", err)
 	}
 	if stored.Discord.RoleID != "" {
 		roleReq, _ := http.NewRequestWithContext(ctx, http.MethodPut, joinURL+"/roles/"+url.PathEscape(stored.Discord.RoleID), nil)
@@ -593,11 +758,19 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 			return nil, err
 		}
 		if err := decodeJSONResponse(roleResp, nil); err != nil {
-			return nil, fmt.Errorf("grant Discord role: %w", err)
+			return nil, fmt.Errorf("授予 Discord 身份组失败：%w", err)
 		}
 	}
-	_, err = s.db.ExecContext(ctx, `INSERT INTO onboarding_discord_bindings (user_id, discord_user_id, discord_username, guild_id, role_id, status, last_checked_at, updated_at) VALUES ($1,$2,$3,$4,$5,'active',NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET discord_user_id=EXCLUDED.discord_user_id, discord_username=EXCLUDED.discord_username, guild_id=EXCLUDED.guild_id, role_id=EXCLUDED.role_id, status='active', last_checked_at=NOW(), updated_at=NOW()`, userID, discordUser.ID, discordUser.Username, stored.Discord.GuildID, stored.Discord.RoleID)
+	return s.saveDiscordBinding(ctx, userID, discordUser.ID, discordUser.Username, stored)
+}
+
+func (s *OnboardingService) saveDiscordBinding(ctx context.Context, userID int64, discordID, username string, stored *onboardingStoredConfig) (*OnboardingDiscordBinding, error) {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO onboarding_discord_bindings (user_id, discord_user_id, discord_username, guild_id, role_id, status, last_checked_at, updated_at) VALUES ($1,$2,$3,$4,$5,'active',NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET discord_user_id=EXCLUDED.discord_user_id, discord_username=EXCLUDED.discord_username, guild_id=EXCLUDED.guild_id, role_id=EXCLUDED.role_id, status='active', last_checked_at=NOW(), updated_at=NOW()`, userID, discordID, username, stored.Discord.GuildID, stored.Discord.RoleID)
 	if err != nil {
+		var state interface{ SQLState() string }
+		if errors.As(err, &state) && state.SQLState() == "23505" {
+			return nil, infraerrors.Conflict("DISCORD_ALREADY_BOUND", "该 Discord 成员已绑定其他用户，请先核对现有归属")
+		}
 		return nil, err
 	}
 	return s.getBinding(ctx, userID)
@@ -644,18 +817,26 @@ func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, se
 		return nil, ErrUnsupportedOpenAIPlan
 	}
 	name := "OpenAI " + plan + " 账号"
-	extra := map[string]any{onboardingOwnerExtraKey: userID, onboardingPublicFallbackExtraKey: stored.PublicFallbackDefault, "onboarding_owner_source": "user_oauth", "onboarding_plan_type": plan}
-	account, err := s.admin.CreateAccount(ctx, &CreateAccountInput{Name: name, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: s.oauth.BuildAccountCredentials(tokenInfo), Extra: extra, Concurrency: 3, Priority: 50, SkipDefaultGroupBind: true})
+	extra := map[string]any{onboardingOwnerExtraKey: userID, "onboarding_owner_source": "user_oauth", "onboarding_plan_type": plan}
+	var account *Account
+	err = s.mutateUser(ctx, userID, 0, func(ctx context.Context) error {
+		if err := s.checkOpenAIAccountNotAdded(ctx, tokenInfo); err != nil {
+			return err
+		}
+		var createErr error
+		account, createErr = s.admin.CreateAccount(ctx, &CreateAccountInput{Name: name, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: s.oauth.BuildAccountCredentials(tokenInfo), Extra: extra, Concurrency: 3, Priority: 50, SkipDefaultGroupBind: true})
+		return createErr
+	})
 	if err != nil {
 		return nil, err
-	}
-	if err := s.reconcileSubscriptions(ctx, userID); err != nil {
-		return account, err
 	}
 	return s.admin.GetAccount(ctx, account.ID)
 }
 
 func (s *OnboardingService) reconcileSubscriptions(ctx context.Context, userID int64) error {
+	if dbent.TxFromContext(ctx) == nil {
+		return s.mutateUser(ctx, userID, 0, nil)
+	}
 	if s.subscriptions == nil {
 		return fmt.Errorf("订阅服务不可用")
 	}
@@ -667,7 +848,7 @@ func (s *OnboardingService) reconcileSubscriptions(ctx context.Context, userID i
 	if err != nil {
 		return err
 	}
-	selected := make(map[string]OnboardingSubscriptionRule)
+	selected := make(map[int64]OnboardingSubscriptionRule)
 	remaining := units
 	for _, key := range []string{"pro", "business_premium", "plus", "business_standard"} {
 		rule, ok := stored.SubscriptionRules[key]
@@ -681,39 +862,47 @@ func (s *OnboardingService) reconcileSubscriptions(ctx context.Context, userID i
 		if cost <= 0 || remaining < cost {
 			continue
 		}
-		selected[key] = rule
+		if _, exists := selected[rule.GroupID]; exists {
+			continue
+		}
+		selected[rule.GroupID] = rule
 		remaining -= cost
 	}
-	activeGroups := make(map[int64]struct{}, len(selected))
-	for key, rule := range selected {
-		if rule.ValidityDays <= 0 {
-			rule.ValidityDays = 30
-		}
-		if _, _, err := s.subscriptions.AssignOrExtendSubscription(ctx, &AssignSubscriptionInput{UserID: userID, GroupID: rule.GroupID, ValidityDays: rule.ValidityDays, Notes: onboardingManagedNotes + ":" + key}); err != nil {
-			return err
-		}
-		activeGroups[rule.GroupID] = struct{}{}
+	if _, err := s.client(ctx).ExecContext(ctx, `SELECT id FROM user_subscriptions WHERE user_id=$1 AND deleted_at IS NULL ORDER BY id FOR UPDATE`, userID); err != nil {
+		return err
 	}
-	if subs, listErr := s.subscriptions.ListUserSubscriptions(ctx, userID); listErr == nil {
-		for _, sub := range subs {
-			if strings.HasPrefix(sub.Notes, onboardingManagedNotes+":") && sub.Status == SubscriptionStatusActive {
-				if _, keep := activeGroups[sub.GroupID]; !keep {
-					if err := s.subscriptions.RevokeSubscription(ctx, sub.ID); err != nil {
-						return err
-					}
-				}
-			}
-		}
+	subs, err := s.subscriptions.userSubRepo.ListByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	activeGroups, err := s.syncOnboardingSubscriptions(ctx, userID, selected, subs, time.Now())
+	if err != nil {
+		return err
 	}
 	groupIDs := make([]int64, 0, len(activeGroups))
 	for id := range activeGroups {
 		groupIDs = append(groupIDs, id)
 	}
+	sort.Slice(groupIDs, func(first, second int) bool { return groupIDs[first] < groupIDs[second] })
 	for _, account := range accounts {
-		if account.Status != StatusActive || len(groupIDs) == 0 {
+		if !onboardingAccountContributes(account, time.Now()) {
 			continue
 		}
-		ids := append([]int64(nil), groupIDs...)
+		managedGroups := make(map[int64]struct{})
+		for _, sub := range subs {
+			if strings.HasPrefix(sub.Notes, onboardingManagedNotes+":") {
+				managedGroups[sub.GroupID] = struct{}{}
+			}
+		}
+		ids := append([]int64{}, groupIDs...)
+		for _, groupID := range account.GroupIDs {
+			if _, managed := managedGroups[groupID]; managed {
+				continue
+			}
+			if _, selected := activeGroups[groupID]; !selected {
+				ids = append(ids, groupID)
+			}
+		}
 		if _, err := s.admin.UpdateAccount(ctx, account.ID, &UpdateAccountInput{GroupIDs: &ids, SkipMixedChannelCheck: true}); err != nil {
 			return err
 		}
@@ -721,24 +910,123 @@ func (s *OnboardingService) reconcileSubscriptions(ctx context.Context, userID i
 	return nil
 }
 
-func (s *OnboardingService) BindExistingAccount(ctx context.Context, userID, accountID int64, publicFallback bool) error {
-	if _, err := s.requireDiscord(ctx, userID); err != nil {
+func (s *OnboardingService) syncOnboardingSubscriptions(ctx context.Context, userID int64, selected map[int64]OnboardingSubscriptionRule, subs []UserSubscription, now time.Time) (map[int64]struct{}, error) {
+	activeGroups := make(map[int64]struct{})
+	existing := make(map[int64]UserSubscription, len(subs))
+	for _, sub := range subs {
+		existing[sub.GroupID] = sub
+	}
+	changed := make(map[int64]struct{})
+	for _, sub := range subs {
+		if !strings.HasPrefix(sub.Notes, onboardingManagedNotes+":") {
+			continue
+		}
+		_, eligible := selected[sub.GroupID]
+		status := sub.Status
+		notes := sub.Notes
+		if !eligible && status == SubscriptionStatusActive {
+			status = SubscriptionStatusSuspended
+			notes = strings.TrimSuffix(notes, ":account_paused") + ":account_paused"
+		} else if eligible && status == SubscriptionStatusSuspended && strings.HasSuffix(notes, ":account_paused") && now.Before(sub.ExpiresAt) {
+			status = SubscriptionStatusActive
+			notes = strings.TrimSuffix(notes, ":account_paused")
+		}
+		if status != sub.Status {
+			if err := s.subscriptions.userSubRepo.UpdateStatus(ctx, sub.ID, status); err != nil {
+				return nil, err
+			}
+			if err := s.subscriptions.userSubRepo.UpdateNotes(ctx, sub.ID, notes); err != nil {
+				return nil, err
+			}
+			changed[sub.GroupID] = struct{}{}
+		}
+		sub.Status, sub.Notes = status, notes
+		existing[sub.GroupID] = sub
+	}
+	for groupID, rule := range selected {
+		sub, exists := existing[groupID]
+		if !exists {
+			created, err := s.subscriptions.createSubscription(ctx, &AssignSubscriptionInput{UserID: userID, GroupID: groupID, ValidityDays: rule.ValidityDays, Notes: onboardingManagedNotes + ":account"})
+			if err != nil {
+				return nil, err
+			}
+			sub = *created
+			changed[groupID] = struct{}{}
+		}
+		if sub.Status == SubscriptionStatusActive && !now.Before(sub.StartsAt) && now.Before(sub.ExpiresAt) {
+			activeGroups[groupID] = struct{}{}
+		}
+	}
+	invalidate := func() {
+		for groupID := range changed {
+			_ = s.subscriptions.invalidateSubscriptionCaches(userID, groupID)
+		}
+	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		tx.OnCommit(func(next dbent.Committer) dbent.Committer {
+			return dbent.CommitFunc(func(commitCtx context.Context, tx *dbent.Tx) error {
+				if err := next.Commit(commitCtx, tx); err != nil {
+					return err
+				}
+				invalidate()
+				return nil
+			})
+		})
+	} else {
+		invalidate()
+	}
+	return activeGroups, nil
+}
+
+func (s *OnboardingService) mutateUser(ctx context.Context, userID, accountID int64, mutate func(context.Context) error) error {
+	tx, err := s.db.Tx(ctx)
+	if err != nil {
 		return err
 	}
-	account, err := s.admin.GetAccount(ctx, accountID)
-	if err != nil || account == nil {
-		return ErrOnboardingAccountMissing
-	}
-	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
-		return infraerrors.BadRequest("ONBOARDING_ACCOUNT_INVALID", "only OpenAI OAuth accounts can be assigned")
-	}
-	if owner := accountOwnerID(*account); owner != 0 && owner != userID {
-		return infraerrors.Conflict("ONBOARDING_ACCOUNT_ASSIGNED", "account is already assigned to another user")
-	}
-	if err := s.admin.UpdateAccountExtra(ctx, accountID, map[string]any{onboardingOwnerExtraKey: userID, onboardingPublicFallbackExtraKey: publicFallback, "onboarding_owner_source": "admin_assignment"}); err != nil {
+	defer func() { _ = tx.Rollback() }()
+	ctx = dbent.NewTxContext(ctx, tx)
+	if _, err := tx.Client().ExecContext(ctx, `SELECT id FROM onboarding_config WHERE id=1 FOR SHARE`); err != nil {
 		return err
 	}
-	return s.reconcileSubscriptions(ctx, userID)
+	if _, err := tx.Client().ExecContext(ctx, `SELECT id FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, userID); err != nil {
+		return err
+	}
+	if accountID > 0 {
+		if _, err := tx.Client().ExecContext(ctx, `SELECT id FROM accounts WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, accountID); err != nil {
+			return err
+		}
+	}
+	if mutate != nil {
+		if err := mutate(ctx); err != nil {
+			return err
+		}
+	}
+	if err := s.reconcileSubscriptions(ctx, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *OnboardingService) BindExistingAccount(ctx context.Context, userID, accountID int64) error {
+	return s.mutateUser(ctx, userID, accountID, func(ctx context.Context) error {
+		if _, err := s.admin.GetUser(ctx, userID); err != nil {
+			return err
+		}
+		if _, err := s.requireDiscord(ctx, userID); err != nil {
+			return err
+		}
+		account, err := s.admin.GetAccount(ctx, accountID)
+		if err != nil || account == nil {
+			return ErrOnboardingAccountMissing
+		}
+		if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+			return infraerrors.BadRequest("ONBOARDING_ACCOUNT_INVALID", "只能分配通过 OpenAI OAuth 接入的账号")
+		}
+		if owner := accountOwnerID(*account); owner != 0 && owner != userID {
+			return infraerrors.Conflict("ONBOARDING_ACCOUNT_ASSIGNED", "账号已分配给其他用户，请先核对现有归属")
+		}
+		return s.admin.UpdateAccountExtra(ctx, accountID, map[string]any{onboardingOwnerExtraKey: userID, "onboarding_owner_source": "admin_assignment"})
+	})
 }
 
 func (s *OnboardingService) UnbindAccount(ctx context.Context, accountID int64) error {
@@ -747,13 +1035,16 @@ func (s *OnboardingService) UnbindAccount(ctx context.Context, accountID int64) 
 		return ErrOnboardingAccountMissing
 	}
 	owner := accountOwnerID(*account)
-	if err := s.admin.UpdateAccountExtra(ctx, accountID, map[string]any{onboardingOwnerExtraKey: nil, onboardingPublicFallbackExtraKey: false, "onboarding_owner_source": nil}); err != nil {
-		return err
+	if owner <= 0 {
+		return nil
 	}
-	if owner > 0 {
-		return s.reconcileSubscriptions(ctx, owner)
-	}
-	return nil
+	return s.mutateUser(ctx, owner, accountID, func(ctx context.Context) error {
+		current, err := s.admin.GetAccount(ctx, accountID)
+		if err != nil || current == nil || accountOwnerID(*current) != owner {
+			return ErrOnboardingAccountMissing
+		}
+		return s.admin.UpdateAccountExtra(ctx, accountID, map[string]any{onboardingOwnerExtraKey: nil, onboardingPublicFallbackExtraKey: nil, "onboarding_owner_source": nil})
+	})
 }
 
 func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdminOverview, error) {
@@ -761,9 +1052,29 @@ func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdmin
 	if err != nil {
 		return nil, err
 	}
-	users, _, err := s.admin.ListUsers(ctx, 1, 1000, UserListFilters{}, "created_at", "asc")
+	users := make([]User, 0)
+	for page := 1; ; page++ {
+		batch, total, err := s.admin.ListUsers(ctx, page, 200, UserListFilters{}, "id", "asc")
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, batch...)
+		if len(batch) == 0 || int64(len(users)) >= total {
+			break
+		}
+	}
+	allAccounts, err := s.listOpenAIAccounts(ctx)
 	if err != nil {
 		return nil, err
+	}
+	accountsByOwner := make(map[int64][]OnboardingAccountSummary)
+	unitsByOwner := make(map[int64]int)
+	for _, account := range allAccounts {
+		owner := accountOwnerID(account)
+		accountsByOwner[owner] = append(accountsByOwner[owner], onboardingAccountSummary(account))
+		if onboardingAccountContributes(account, time.Now()) {
+			unitsByOwner[owner] += onboardingPlanUnits(account.GetCredential("plan_type"), stored.PlanUnits)
+		}
 	}
 	bindings, err := s.listBindings(ctx)
 	if err != nil {
@@ -775,25 +1086,14 @@ func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdmin
 	}
 	overview := &OnboardingAdminOverview{Config: publicOnboardingConfig(stored), Users: make([]OnboardingAdminUser, 0, len(users)), UnassignedAccounts: make([]OnboardingAccountSummary, 0)}
 	for _, user := range users {
-		accounts, units, accountErr := s.listUserAccounts(ctx, user.ID)
-		if accountErr != nil {
-			return nil, accountErr
+		summaries := accountsByOwner[user.ID]
+		if summaries == nil {
+			summaries = []OnboardingAccountSummary{}
 		}
-		summaries := make([]OnboardingAccountSummary, 0, len(accounts))
-		for _, account := range accounts {
-			summaries = append(summaries, OnboardingAccountSummary{ID: account.ID, Name: account.Name, PlanType: normalizeOnboardingPlan(account.GetCredential("plan_type")), Status: account.Status, Public: accountPublicFallback(account)})
-		}
-		overview.Users = append(overview.Users, OnboardingAdminUser{UserID: user.ID, Email: user.Email, Username: user.Username, Discord: bindingMap[user.ID], Accounts: summaries, AccountUnits: units})
+		overview.Users = append(overview.Users, OnboardingAdminUser{UserID: user.ID, Email: user.Email, Username: user.Username, Discord: bindingMap[user.ID], Accounts: summaries, AccountUnits: unitsByOwner[user.ID]})
 	}
-	allAccounts, _, err := s.admin.ListAccounts(ctx, 1, 1000, PlatformOpenAI, AccountTypeOAuth, "", "", 0, "", "created_at", "asc")
-	if err != nil {
-		return nil, err
-	}
-	for _, account := range allAccounts {
-		if accountOwnerID(account) != 0 {
-			continue
-		}
-		overview.UnassignedAccounts = append(overview.UnassignedAccounts, OnboardingAccountSummary{ID: account.ID, Name: account.Name, PlanType: normalizeOnboardingPlan(account.GetCredential("plan_type")), Status: account.Status, Public: accountPublicFallback(account)})
+	if accountsByOwner[0] != nil {
+		overview.UnassignedAccounts = accountsByOwner[0]
 	}
 	return overview, nil
 }

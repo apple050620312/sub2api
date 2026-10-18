@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 
 const { getUserStatus, getAdminOverview, setPolicy } = vi.hoisted(() => ({
   getUserStatus: vi.fn(),

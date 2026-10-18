@@ -420,7 +420,7 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if selection != nil && selection.Account != nil {
 			compatible, _ := s.isAccountRequestCompatibleReason(ctx, selection.Account, req)
-			ownerAllowed := req.PreferredOwnerUserID <= 0 || onboardingAccountBelongsToUser(selection.Account, req.PreferredOwnerUserID)
+			ownerAllowed := onboardingAccountAllowedForUser(selection.Account, req.PreferredOwnerUserID)
 			hasGroupMetadata := len(selection.Account.GroupIDs) > 0 || len(selection.Account.AccountGroups) > 0
 			groupCompatible := !hasGroupMetadata || openAIStickyAccountMatchesGroup(selection.Account, req.GroupID)
 			if hasGroupMetadata && s.service != nil {
@@ -1494,25 +1494,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 		filtered = append(filtered, account)
 	}
-	if req.PreferredOwnerUserID > 0 {
-		owned := make([]*Account, 0, len(filtered))
-		public := make([]*Account, 0, len(filtered))
-		for _, account := range filtered {
-			switch {
-			case onboardingAccountBelongsToUser(account, req.PreferredOwnerUserID):
-				owned = append(owned, account)
-			case onboardingAccountIsPublic(account):
-				public = append(public, account)
-			default:
-				filterStats.exclude("owned_by_other_user")
-			}
-		}
-		if len(owned) > 0 {
-			filtered = owned
-		} else {
-			filtered = public
-		}
-	}
 	if len(filtered) == 0 {
 		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
 	}
@@ -1531,6 +1512,32 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	}
 
+	if req.PreferredOwnerUserID > 0 {
+		owned, public := partitionOnboardingAccounts(filtered, req.PreferredOwnerUserID)
+		if len(owned) > 0 {
+			attempts := make([]openAIAccountLoadSelectionAttempt, 0, 2)
+			for _, pool := range [][]*Account{owned, public} {
+				if len(pool) == 0 {
+					continue
+				}
+				attempt := s.trySelectByLoadBalancePool(ctx, req, pool, loadMap, budget)
+				if attempt.result != nil || (attempt.err != nil && !attempt.noCompactCandidates) {
+					return attempt.result, attempt.candidateCount, attempt.topK, attempt.loadSkew, attempt.err
+				}
+				attempts = append(attempts, attempt)
+			}
+			for _, attempt := range attempts {
+				if attempt.err != nil {
+					continue
+				}
+				result, count, topK, skew, err := s.finishLoadBalanceSelectionFallback(ctx, req, attempt, budget, filterStats)
+				if result != nil && err == nil {
+					return result, count, topK, skew, nil
+				}
+			}
+			return nil, len(filtered), 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, req.RequireCompact, filterStats.summary(""))
+		}
+	}
 	if req.SubscriptionPriority {
 		subscriptionAccounts, regularAccounts := partitionOpenAIChatGPTSubscriptionAccounts(filtered)
 		if len(subscriptionAccounts) > 0 {

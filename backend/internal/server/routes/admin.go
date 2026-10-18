@@ -140,6 +140,8 @@ func registerOnboardingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		onboarding.GET("", h.Admin.Onboarding.GetAdminOverview)
 		onboarding.GET("/config", h.Admin.Onboarding.GetAdminConfig)
 		onboarding.PUT("/config", h.Admin.Onboarding.UpdateAdminConfig)
+		onboarding.GET("/discord/members", h.Admin.Onboarding.ListDiscordMembers)
+		onboarding.POST("/discord/bind", h.Admin.Onboarding.BindDiscordMember)
 		onboarding.POST("/accounts/:id/bind", h.Admin.Onboarding.BindAccount)
 		onboarding.DELETE("/accounts/:id/bind", h.Admin.Onboarding.UnbindAccount)
 	}
@@ -297,7 +299,6 @@ func registerDashboardRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		dashboard.GET("/stats", h.Admin.Dashboard.GetStats)
 		dashboard.GET("/5h-pressure", h.Admin.Dashboard.GetDynamic5hPressure)
 		dashboard.GET("/5h-pressure/overview", h.Admin.Dashboard.GetDynamic5hPressureOverview)
-		dashboard.POST("/5h-pressure/reconcile", h.Admin.Dashboard.ReconcileDynamic5hMetering)
 		dashboard.PUT("/5h-pressure/users/:user_id/policy", h.Admin.Dashboard.SetDynamic5hUserPolicy)
 		dashboard.POST("/5h-pressure/users/:user_id/reset", h.Admin.Dashboard.ResetDynamic5hUser)
 		dashboard.GET("/realtime", h.Admin.Dashboard.GetRealtimeMetrics)

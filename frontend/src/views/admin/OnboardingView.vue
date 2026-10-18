@@ -1,152 +1,132 @@
 <template>
-    <div class="w-full space-y-8">
-      <header class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">新手引导管理</h1>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">配置 Discord 授权、OpenAI OAuth、套餐换算和 CC Switch 下载地址。</p>
-      </header>
-
-      <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-        <div class="flex items-center justify-between gap-4">
-          <h2 class="text-lg font-semibold text-gray-900 dark:text-white">基础配置</h2>
-          <button class="btn btn-primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存配置' }}</button>
-        </div>
-        <div class="mt-5 grid gap-4 md:grid-cols-2">
-          <label class="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200"><input v-model="form.enabled" type="checkbox" />启用新手引导</label>
-          <label class="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200"><input v-model="form.public_fallback_default" type="checkbox" />新账号默认允许公共回退</label>
-          <label class="space-y-1 text-sm"><span>Discord Client ID</span><input v-model="form.discord.client_id" class="form-input w-full" /></label>
-          <label class="space-y-1 text-sm"><span>Discord Client Secret（留空保持不变）</span><input v-model="form.discord.client_secret" type="password" class="form-input w-full" /></label>
-          <label class="space-y-1 text-sm"><span>Discord Bot Token（留空保持不变）</span><input v-model="form.discord.bot_token" type="password" class="form-input w-full" /></label>
-          <label class="space-y-1 text-sm"><span>服务器 ID</span><input v-model="form.discord.guild_id" class="form-input w-full" /></label>
-          <label class="space-y-1 text-sm"><span>身份组 ID</span><input v-model="form.discord.role_id" class="form-input w-full" /></label>
-          <label class="space-y-1 text-sm"><span>Discord 回调地址</span><input v-model="form.discord.redirect_uri" class="form-input w-full" placeholder="https://example.com/onboarding" /></label>
-          <label class="space-y-1 text-sm"><span>OpenAI 回调地址（留空使用默认流程）</span><input v-model="form.openai_redirect_uri" class="form-input w-full" placeholder="http://localhost:1455/auth/callback" /></label>
-          <label class="space-y-1 text-sm md:col-span-2"><span>CC Switch 下载地址</span><input v-model="form.ccswitch_download_url" class="form-input w-full" /></label>
-        </div>
-      </section>
-
-      <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">绑定已有 OpenAI OAuth 账号</h2>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">账号 ID 可在“账号管理”中查看；绑定后会重新计算该用户的 Plus 等值和订阅。</p>
-        <div class="mt-4 flex flex-wrap items-end gap-3">
-          <label class="space-y-1 text-sm"><span>未分配账号</span><select v-model.number="bindForm.account_id" class="form-input w-64"><option :value="0">请选择账号</option><option v-for="account in overview?.unassigned_accounts || []" :key="account.id" :value="account.id">{{ account.name }} · {{ account.plan_type || '未知套餐' }}（#{{ account.id }}）</option></select></label>
-          <label class="space-y-1 text-sm"><span>账号 ID</span><input v-model.number="bindForm.account_id" type="number" min="1" class="form-input w-32" /></label>
-          <label class="space-y-1 text-sm"><span>用户 ID</span><input v-model.number="bindForm.user_id" type="number" min="1" class="form-input w-32" /></label>
-          <label class="flex items-center gap-2 pb-2 text-sm"><input v-model="bindForm.public_fallback" type="checkbox" />允许公共回退</label>
-          <button class="btn btn-primary" :disabled="!bindForm.account_id || !bindForm.user_id" @click="bind">绑定账号</button>
-        </div>
-      </section>
-
-      <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white">套餐换算和订阅分配</h2>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">单位以 Plus 等值计算：Plus/Business Standard 通常为 1，Pro/Business Premium 通常为 5。</p>
-        <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <label v-for="plan in planNames" :key="plan" class="space-y-1 text-sm"><span>{{ plan }} 单位</span><input v-model.number="form.plan_units[plan]" type="number" min="0" class="form-input w-full" /></label>
-        </div>
-        <div class="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-dark-700">
-          <table class="min-w-full text-left text-sm"><thead class="bg-gray-50 dark:bg-dark-700/50"><tr><th class="px-4 py-3">套餐</th><th class="px-4 py-3">分组 ID</th><th class="px-4 py-3">有效期（天）</th><th class="px-4 py-3">消耗单位</th></tr></thead>
-            <tbody><tr v-for="plan in planNames" :key="plan" class="border-t border-gray-100 dark:border-dark-700"><td class="px-4 py-3">{{ plan }}</td><td class="px-4 py-3"><input v-model.number="form.subscription_rules[plan].group_id" type="number" min="0" class="form-input w-32" /></td><td class="px-4 py-3"><input v-model.number="form.subscription_rules[plan].validity_days" type="number" min="1" class="form-input w-28" /></td><td class="px-4 py-3"><input v-model.number="form.subscription_rules[plan].units" type="number" min="0" class="form-input w-24" /></td></tr></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
-        <div class="flex items-center justify-between gap-4"><h2 class="text-lg font-semibold text-gray-900 dark:text-white">用户和账号归属</h2><button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button></div>
-        <div v-if="loading" class="py-8 text-center text-sm text-gray-500">正在加载…</div>
-        <div v-else class="mt-4 space-y-3">
-          <div v-for="user in overview?.users || []" :key="user.user_id" class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
-            <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="font-medium text-gray-900 dark:text-white">{{ user.username || '未设置用户名' }}</p><p class="text-sm text-gray-500">{{ user.email }} · {{ user.account_units }} 个 Plus 等值</p></div><span class="text-sm text-gray-500">{{ user.discord?.status === 'active' ? `Discord：${user.discord.discord_username}` : '未绑定 Discord' }}</span></div>
-            <div v-if="user.accounts.length" class="mt-3 grid gap-2 sm:grid-cols-2"><div v-for="account in user.accounts" :key="account.id" class="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-sm dark:bg-dark-700/50"><span>{{ account.name }} · {{ account.plan_type || '未知套餐' }}</span><button class="text-red-600 hover:underline" @click="unbind(account.id)">解绑</button></div></div>
-            <p v-else class="mt-3 text-sm text-gray-500">暂无专属账号，请在账号管理中复制账号 ID 后使用下方绑定。</p>
-          </div>
-        </div>
-      </section>
-    </div>
+  <div class="space-y-8">
+    <section class="card overflow-visible">
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 p-6 dark:border-dark-700">
+        <div><h2 class="text-lg font-semibold">用户与账号</h2><p class="mt-1 text-sm text-gray-500">账号优先服务所属用户，忙碌时自动回退公共池。</p></div>
+        <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
+      </div>
+      <div class="p-6"><input v-model="search" class="input w-full sm:max-w-md" aria-label="搜索用户或账号" placeholder="搜索用户邮箱、Discord 或 GPT 账号名称" /></div>
+      <DataTable :columns="userColumns" :data="filteredUsers" :loading="loading" row-key="user_id" :actions-count="2">
+        <template #cell-email="{ row }"><p class="font-medium">{{ row.email }}</p><p class="mt-1 text-xs text-gray-500">{{ row.username || '未设置用户名' }}</p></template>
+        <template #cell-discord="{ row }">{{ row.discord?.discord_username || '未绑定' }}</template>
+        <template #cell-accounts="{ row }"><div v-if="row.accounts.length" class="space-y-3"><div v-for="account in row.accounts" :key="account.id" class="flex flex-wrap items-center gap-3"><button class="text-left text-primary-600 hover:underline" @click="detail = account">{{ account.name }}<span class="ml-2 text-xs text-gray-500">{{ account.plan_type }}</span></button><button class="text-xs text-red-600 hover:underline" :disabled="busy" @click="askUnbind(row, account)">解绑</button></div></div><span v-else class="text-gray-400">暂无账号</span></template>
+        <template #cell-account_units="{ value }">{{ value }} 个 Plus 等值</template>
+        <template #cell-actions="{ row }"><div class="flex flex-wrap gap-2"><button class="btn btn-secondary btn-sm" @click="openAssignment(row, 'account')">分配账号</button><button class="btn btn-secondary btn-sm" @click="openAssignment(row, 'discord')">绑定 Discord</button></div></template>
+      </DataTable>
+    </section>
+    <section class="card p-6">
+      <div class="mb-6 flex flex-wrap items-start justify-between gap-4"><div><h2 class="text-lg font-semibold">服务配置</h2><p class="mt-1 text-sm text-gray-500">配置 Discord、新手接入流程和自动订阅。保存后会重新核对账号资格。</p></div><button class="btn btn-primary" :disabled="busy || loading" @click="save">{{ busy ? '处理中…' : '保存配置' }}</button></div>
+      <label class="mb-6 flex items-center gap-3 text-sm"><input v-model="form.enabled" type="checkbox" class="rounded" />启用新手引导</label>
+      <div class="grid gap-5 md:grid-cols-2">
+        <label class="space-y-2 text-sm"><span>Discord Client ID</span><input v-model="form.discord.client_id" class="input" /></label>
+        <label class="space-y-2 text-sm"><span>Discord Client Secret</span><input v-model="form.discord.client_secret" type="password" autocomplete="new-password" class="input" :placeholder="form.discord.client_secret_configured ? '已配置，留空保持不变' : '请输入 Client Secret'" /></label>
+        <label class="space-y-2 text-sm"><span>Discord Bot Token</span><input v-model="form.discord.bot_token" type="password" autocomplete="new-password" class="input" :placeholder="form.discord.bot_token_configured ? '已配置，留空保持不变' : '请输入 Bot Token'" /></label>
+        <label class="space-y-2 text-sm"><span>Discord 服务器 ID</span><input v-model="form.discord.guild_id" class="input" /></label>
+        <label class="space-y-2 text-sm"><span>Discord 身份组 ID</span><input v-model="form.discord.role_id" class="input" /></label>
+        <label class="space-y-2 text-sm"><span>Discord 回调地址</span><input v-model="form.discord.redirect_uri" class="input" placeholder="https://example.com/onboarding" /></label>
+        <label class="space-y-2 text-sm"><span>OpenAI 回调地址</span><input v-model="form.openai_redirect_uri" class="input" placeholder="留空使用默认 OAuth 流程" /></label>
+        <label class="space-y-2 text-sm"><span>CC Switch 下载地址</span><input v-model="form.ccswitch_download_url" class="input" /></label>
+      </div>
+      <h3 class="mb-2 mt-8 font-semibold">套餐与订阅</h3><p class="mb-5 text-sm leading-6 text-gray-500">按有效账号的 Plus 等值匹配订阅。暂停或删除账号会暂停不再符合资格的自动订阅；恢复账号保留原有效期及用量。手动购买的订阅不受影响。</p>
+      <div class="space-y-4"><div v-for="plan in plans" :key="plan.key" class="grid gap-4 rounded-lg bg-gray-50 p-4 dark:bg-dark-900 md:grid-cols-[minmax(140px,1fr)_minmax(200px,2fr)_1fr_1fr_1fr] md:items-end">
+        <p class="self-center font-medium">{{ plan.label }}</p>
+        <label class="space-y-2 text-sm"><span>订阅分组</span><Select v-model="form.subscription_rules[plan.key]!.group_id" :options="groupOptions" searchable :aria-label="`${plan.label} 订阅分组`" /></label>
+        <label class="space-y-2 text-sm"><span>账号单位</span><input v-model.number="form.plan_units[plan.key]" type="number" min="0" max="1000" class="input" /></label>
+        <label class="space-y-2 text-sm"><span>消耗单位</span><input v-model.number="form.subscription_rules[plan.key]!.units" type="number" min="1" max="1000" class="input" /></label>
+        <label class="space-y-2 text-sm"><span>有效期（天）</span><input v-model.number="form.subscription_rules[plan.key]!.validity_days" type="number" min="1" max="36500" class="input" /></label>
+      </div></div>
+    </section>
+    <BaseDialog :show="!!assignment" :title="assignmentKind === 'account' ? '分配 GPT 账号' : '绑定现有 Discord 成员'" width="normal" @close="assignment = null">
+      <div class="space-y-5"><p class="rounded-lg bg-gray-50 p-4 text-sm dark:bg-dark-900">目标用户：<strong class="break-all">{{ assignment?.email }}</strong></p>
+        <template v-if="assignmentKind === 'account'"><label class="mb-2 block text-sm">选择 GPT 账号</label><Select v-model="accountID" :options="accountOptions" searchable aria-label="选择 GPT 账号" placeholder="按账号名称或邮箱选择" /></template>
+        <template v-else><p class="text-sm text-gray-500">搜索服务器里的昵称或 Discord 用户名。机器人需具有成员列表权限和授予身份组权限。</p><Select v-model="memberID" :options="memberOptions" remote :loading="membersLoading" aria-label="选择 Discord 成员" placeholder="搜索 Discord 成员" @search="loadMembers" /><p v-if="memberError" role="alert" class="text-sm text-red-600">{{ memberError }}</p></template>
+      </div>
+      <template #footer><button class="btn btn-secondary" @click="assignment = null">取消</button><button class="btn btn-primary ml-3" :disabled="busy || (assignmentKind === 'account' ? !accountID : !memberID)" @click="askAssignment">下一步</button></template>
+    </BaseDialog>
+    <ServiceAccountDetails :account="detail" @close="detail = null" />
+    <ConfirmDialog :show="!!confirmation" :title="confirmation?.title || ''" :message="confirmation?.message || ''" :danger="confirmation?.danger" @cancel="confirmation = null" @confirm="confirm" />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import DataTable from '@/components/common/DataTable.vue'
+import Select from '@/components/common/Select.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import ServiceAccountDetails from '@/components/common/ServiceAccountDetails.vue'
 import { onboardingAPI } from '@/api/admin/onboarding'
-import type { OnboardingAdminOverview } from '@/api/admin/onboardingTypes'
-import type { OnboardingConfig } from '@/api/user'
+import type { OnboardingAdminOverview, OnboardingAdminUser, OnboardingDiscordMember } from '@/api/admin/onboardingTypes'
+import type { OnboardingAccountSummary, OnboardingConfig } from '@/api/user'
+import { getAll } from '@/api/admin/groups'
+import { useAppStore } from '@/stores/app'
 
-
-const planNames = ['plus', 'pro', 'business_premium', 'business_standard'] as const
-type PlanName = (typeof planNames)[number]
-type Rule = { group_id: number; validity_days: number; units: number }
-
-function emptyRule(): Rule {
-  return { group_id: 0, validity_days: 30, units: 0 }
-}
-
+const app = useAppStore()
+const plans = [{ key: 'plus', label: 'Plus' }, { key: 'pro', label: 'Pro' }, { key: 'business_standard', label: 'Business Standard' }, { key: 'business_premium', label: 'Business Premium' }]
 const overview = ref<OnboardingAdminOverview | null>(null)
 const loading = ref(false)
-const saving = ref(false)
-const bindForm = reactive({ account_id: 0, user_id: 0, public_fallback: false })
-const form = reactive({
-  enabled: true,
-  public_fallback_default: false,
-  discord: { client_id: '', client_secret: '', bot_token: '', guild_id: '', role_id: '', redirect_uri: '' },
-  openai_redirect_uri: '',
-  ccswitch_download_url: '',
-  plan_units: { plus: 1, pro: 5, business_premium: 5, business_standard: 1 } as Record<PlanName, number>,
-  subscription_rules: { plus: emptyRule(), pro: emptyRule(), business_premium: emptyRule(), business_standard: emptyRule() } as Record<PlanName, Rule>,
-})
-
-function applyConfig(config: OnboardingConfig) {
-  form.enabled = config.enabled
-  form.public_fallback_default = config.public_fallback_default
-  form.discord.client_id = config.discord.client_id || ''
-  form.discord.guild_id = config.discord.guild_id || ''
-  form.discord.role_id = config.discord.role_id || ''
-  form.discord.redirect_uri = config.discord.redirect_uri || ''
-  form.openai_redirect_uri = config.openai_redirect_uri || ''
-  form.ccswitch_download_url = config.ccswitch_download_url || ''
-  for (const plan of planNames) {
-    form.plan_units[plan] = config.plan_units?.[plan] ?? form.plan_units[plan]
-    form.subscription_rules[plan] = { ...emptyRule(), ...(config.subscription_rules?.[plan] || {}) }
-  }
-}
-
+const busy = ref(false)
+const search = ref('')
+const groupOptions = ref<Array<{ value: number; label: string }>>([{ value: 0, label: '不自动分配订阅' }])
+const form = reactive<OnboardingConfig & { discord: OnboardingConfig['discord'] & { client_secret: string; bot_token: string } }>({ enabled: true, discord: { client_id: '', client_secret: '', bot_token: '', client_secret_configured: false, bot_token_configured: false, guild_id: '', role_id: '', redirect_uri: '' }, plan_units: {}, subscription_rules: Object.fromEntries(plans.map(plan => [plan.key, { group_id: 0, validity_days: 30, units: plan.key.includes('premium') || plan.key === 'pro' ? 5 : 1 }])), openai_redirect_uri: '', ccswitch_download_url: '' })
+const userColumns = [{ key: 'email', label: '用户' }, { key: 'discord', label: 'Discord' }, { key: 'accounts', label: 'GPT 账号' }, { key: 'account_units', label: '有效贡献' }, { key: 'actions', label: '操作' }]
+const filteredUsers = computed(() => (overview.value?.users || []).filter(user => `${user.email} ${user.username} ${user.discord?.discord_username || ''} ${user.accounts.map(account => `${account.name} ${account.email}`).join(' ')}`.toLowerCase().includes(search.value.toLowerCase())))
+const detail = ref<OnboardingAccountSummary | null>(null)
+const assignment = ref<OnboardingAdminUser | null>(null)
+const assignmentKind = ref<'account' | 'discord'>('account')
+const accountID = ref<number>(0)
+const memberID = ref('')
+const members = ref<OnboardingDiscordMember[]>([])
+const membersLoading = ref(false)
+const memberError = ref('')
+let memberRequest = 0
+const accountOptions = computed(() => (overview.value?.unassigned_accounts || []).map(account => ({ value: account.id, label: `${account.name} · ${account.email || account.plan_type}` })))
+const memberOptions = computed(() => members.value.map(member => ({ value: member.id, label: `${member.display_name} (@${member.username})${member.bound_email ? ` · 已绑定 ${member.bound_email}` : ''}`, disabled: !!member.bound_email && member.bound_email !== assignment.value?.email })))
+const confirmation = ref<{ title: string; message: string; danger?: boolean; action: () => Promise<void> } | null>(null)
+const errorMessage = (error: unknown) => (error as { response?: { data?: { message?: string } } })?.response?.data?.message || '操作失败，请稍后重试'
 async function load() {
   loading.value = true
   try {
-    overview.value = await onboardingAPI.getOverview()
-    applyConfig(overview.value.config)
-  } finally {
-    loading.value = false
+    const [data, groups] = await Promise.all([onboardingAPI.getOverview(), getAll('openai')])
+    overview.value = data
+    const rules = { ...form.subscription_rules, ...data.config.subscription_rules }
+    Object.assign(form, data.config, { discord: { ...data.config.discord, client_secret: '', bot_token: '' }, subscription_rules: rules })
+    groupOptions.value = [{ value: 0, label: '不自动分配订阅' }, ...groups.filter(group => group.subscription_type === 'subscription' && group.status === 'active').map(group => ({ value: group.id, label: group.name }))]
+  } catch (error) { app.showError(errorMessage(error)) } finally { loading.value = false }
+}
+async function perform(action: () => Promise<unknown>) {
+  if (busy.value) return
+  busy.value = true
+  try { await action(); app.showSuccess('操作成功'); await load() } catch (error) { app.showError(errorMessage(error)) } finally { busy.value = false }
+}
+async function save() { await perform(() => onboardingAPI.updateConfig(form)) }
+async function loadMembers(query = '') {
+  const request = ++memberRequest
+  membersLoading.value = true
+  memberError.value = ''
+  try { const result = await onboardingAPI.getDiscordMembers(query); if (request === memberRequest) members.value = result } catch (error) { if (request === memberRequest) memberError.value = errorMessage(error) } finally { if (request === memberRequest) membersLoading.value = false }
+}
+function openAssignment(user: OnboardingAdminUser, kind: 'account' | 'discord') {
+  assignment.value = user
+  assignmentKind.value = kind
+  accountID.value = 0
+  memberID.value = ''
+  if (kind === 'discord') void loadMembers()
+}
+function askAssignment() {
+  const user = assignment.value
+  if (!user) return
+  const account = overview.value?.unassigned_accounts.find(account => account.id === accountID.value)
+  const member = members.value.find(member => member.id === memberID.value)
+  if (assignmentKind.value === 'account' && account) {
+    confirmation.value = { title: '确认分配账号', message: `将 GPT 账号“${account.name}”（${account.email || account.plan_type}）绑定到 ${user.email}，并更新其订阅资格。`, action: async () => { await onboardingAPI.bindAccount(account.id, user.user_id); assignment.value = null } }
+  } else if (assignmentKind.value === 'discord' && member) {
+    confirmation.value = { title: '确认绑定 Discord', message: `将 Discord 成员“${member.display_name}”（@${member.username}）绑定到 ${user.email}，并授予配置的身份组。`, action: async () => { await onboardingAPI.bindDiscordMember(user.user_id, member.id); assignment.value = null } }
   }
 }
-
-async function save() {
-  saving.value = true
-  try {
-    const config = await onboardingAPI.updateConfig({
-      enabled: form.enabled,
-      public_fallback_default: form.public_fallback_default,
-      discord: form.discord,
-      openai_redirect_uri: form.openai_redirect_uri,
-      ccswitch_download_url: form.ccswitch_download_url,
-      plan_units: form.plan_units,
-      subscription_rules: form.subscription_rules,
-    })
-    applyConfig(config)
-    if (overview.value) overview.value.config = config
-  } finally {
-    saving.value = false
-  }
+function askUnbind(user: OnboardingAdminUser, account: OnboardingAccountSummary) {
+  confirmation.value = { title: '确认解绑账号', message: `解除 ${user.email} 与 GPT 账号“${account.name}”的绑定。该用户的自动订阅资格将重新计算。`, danger: true, action: () => onboardingAPI.unbindAccount(account.id) }
 }
-
-async function unbind(accountID: number) {
-  if (!window.confirm('确定解绑这个账号吗？解绑后将停止为对应用户分配订阅。')) return
-  await onboardingAPI.unbindAccount(accountID)
-  await load()
-}
-
-async function bind() {
-  await onboardingAPI.bindAccount(bindForm.account_id, bindForm.user_id, bindForm.public_fallback)
-  bindForm.account_id = 0
-  await load()
-}
-
+async function confirm() { const pending = confirmation.value; if (!pending || busy.value) return; confirmation.value = null; await perform(pending.action) }
 onMounted(load)
 </script>

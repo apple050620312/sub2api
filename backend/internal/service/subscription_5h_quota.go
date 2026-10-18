@@ -18,28 +18,29 @@ type Subscription5hQuota struct {
 }
 
 type Subscription5hQuotaRepository interface {
-	ReadSubscription5hQuota(context.Context, int64, time.Time, float64) (Subscription5hQuota, error)
+	ReadSubscription5hQuota(context.Context, int64, time.Time) (Subscription5hQuota, error)
 	ListSubscription5hUserIDs(context.Context, time.Time) ([]int64, error)
 }
 
 func (s *Dynamic5hPressureService) subscriptionQuotaUserStatus(ctx context.Context, userID int64) (Dynamic5hUserStatus, error) {
 	pressure := s.AdminStatus(ctx, false)
-	result := Dynamic5hUserStatus{Enabled: s.cfg.Enabled, State: pressure.State, WarningLevel: "normal", Multiplier: 1}
-	if userID <= 0 {
+	result := Dynamic5hUserStatus{Enabled: s.cfg.Enabled, State: pressure.State, WarningLevel: "normal"}
+	if userID <= 0 || s.quotaRepo == nil {
 		return result, nil
 	}
 	policies, err := s.policySnapshot(ctx)
 	if err != nil {
+		s.metrics.policyFailOpen.Add(1)
 		return result, err
 	}
-	policy := normalizedDynamic5hPolicy(policies[userID])
-	result.Multiplier, result.Exempt = policy.Multiplier, policy.Exempt
-	quota, err := s.quotaRepo.ReadSubscription5hQuota(ctx, userID, s.now().UTC(), policy.Multiplier)
+	policy := policies[userID]
+	result.Exempt = policy.Exempt
+	quota, err := s.quotaRepo.ReadSubscription5hQuota(ctx, userID, s.now().UTC())
 	if err != nil {
 		return result, err
 	}
 	result.SevenDayLimitUSD = quota.WeeklyLimitUSD
-	result.LimitUSD = quota.WeeklyLimitUSD * subscription5hWeeklyRatio * policy.Multiplier
+	result.LimitUSD = quota.WeeklyLimitUSD * subscription5hWeeklyRatio
 	if result.LimitUSD <= 0 || math.IsNaN(result.LimitUSD) || math.IsInf(result.LimitUSD, 0) {
 		return result, nil
 	}
@@ -69,6 +70,9 @@ func (s *Dynamic5hPressureService) checkSubscriptionQuota(ctx context.Context, u
 	}
 	pressure := s.AdminStatus(ctx, false)
 	if !pressure.DataAvailable || pressure.Stale || pressure.State != Dynamic5hPressurePeak {
+		if pressure.Stale {
+			s.metrics.staleFailOpen.Add(1)
+		}
 		return nil
 	}
 	status, err := s.subscriptionQuotaUserStatus(ctx, userID)

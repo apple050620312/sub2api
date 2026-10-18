@@ -92,7 +92,7 @@ export default {
 
     pressure5hPage: {
       title: '5h Pool Pressure',
-      description: 'Dynamic fair-share protection across the effective account pool',
+      description: 'Track rolling five-hour spending against subscription weekly allowances, with extra limits only at peak times',
       pressure: 'Pressure',
       effectiveAccounts: 'Effective accounts',
       activeUsers: 'Active users (15m)',
@@ -117,14 +117,9 @@ export default {
       disabled: 'Five-hour peak protection is disabled.',
       refresh: 'Refresh',
       policy: 'Policy',
-      multiplier: 'Multiplier',
       exempt: 'Exempt',
       resetUsage: 'Reset usage',
-      apply: 'Apply multiplier',
-      applyConfirm: 'Change user #{user} multiplier from {before}x to {after}x?',
-      exemptConfirm: 'Change peak exemption for user #{user}?',
       resetConfirm: 'Reset this user’s rolling five-hour usage? This action is audited.',
-      overcommitted: 'Extra guaranteed allowances total {value}% of the base pool and may be overcommitted during peak periods.',
       accountDiagnostics: 'Effective account diagnostics',
       account: 'Account',
       rejoin: 'Expected rejoin',

@@ -133,17 +133,6 @@ type BillingCacheService struct {
 func (s *BillingCacheService) SetDynamic5hPressureService(pressure *Dynamic5hPressureService) {
 	if s != nil {
 		s.dynamic5hPressure = pressure
-		if pressure != nil && pressure.quotaRepo == nil {
-			pressure.StartMeterReconciliation()
-		}
-	}
-}
-
-// RecordDynamic5hPressureUsage records successful metered usage for pool
-// calibration and each user's rolling fair-share usage in every pressure state.
-func (s *BillingCacheService) RecordDynamic5hPressureUsage(ctx context.Context, userID int64, platform string, meterUnits float64) {
-	if s != nil && s.dynamic5hPressure != nil {
-		s.dynamic5hPressure.RecordUsage(ctx, userID, platform, meterUnits)
 	}
 }
 
@@ -175,9 +164,6 @@ func NewBillingCacheService(
 
 // Stop 关闭缓存写入工作池
 func (s *BillingCacheService) Stop() {
-	if s.dynamic5hPressure != nil {
-		s.dynamic5hPressure.StopMeterReconciliation()
-	}
 	s.cacheWriteStopOnce.Do(func() {
 		s.stopped.Store(true)
 

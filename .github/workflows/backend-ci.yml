@@ -15,7 +15,6 @@ jobs:
       - name: Check deployment scripts
         run: |
           /bin/bash -n deploy/apple-container.sh
-          /bin/bash deploy/tests/dynamic-5h-release-test.sh
           /bin/bash -n deploy/update-ghcr.sh
           /bin/bash deploy/tests/ghcr-update-test.sh
           /bin/bash deploy/tests/apple-container-test.sh
@@ -47,7 +46,7 @@ jobs:
         run: make test-integration
       - name: Dynamic 5h race tests
         working-directory: backend
-        run: go test -race -tags=unit ./internal/service ./internal/repository -run 'TestDynamic5h|TestCalculateDynamic5h|TestNextDynamic5h' -count=1
+        run: go test -race -tags=unit ./internal/service ./internal/repository -run 'TestDynamic5h|TestCalculateDynamic5h|TestNextDynamic5h|TestOnboarding' -count=1
 
   frontend:
     runs-on: ubuntu-latest

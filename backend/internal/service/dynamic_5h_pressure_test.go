@@ -4,32 +4,17 @@ package service
 
 import (
 	"context"
-	"strconv"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
 type dynamic5hMemoryCache struct {
-	status       Dynamic5hPressureStatus
-	found        bool
-	lockToken    string
-	active       map[int64]time.Time
-	meter        map[int64]float64
-	userMeter    map[int64]map[int64]float64
-	policies     map[int64]Dynamic5hUserPolicy
-	pending      map[int64]float64
-	reservations map[string]float64
-}
-
-func newDynamic5hMemoryCache() *dynamic5hMemoryCache {
-	return &dynamic5hMemoryCache{
-		active: make(map[int64]time.Time), meter: make(map[int64]float64),
-		userMeter: make(map[int64]map[int64]float64), policies: make(map[int64]Dynamic5hUserPolicy), pending: make(map[int64]float64), reservations: make(map[string]float64),
-	}
+	status    Dynamic5hPressureStatus
+	found     bool
+	lockToken string
 }
 
 func (c *dynamic5hMemoryCache) LoadStatus(context.Context) (Dynamic5hPressureStatus, bool, error) {
@@ -56,130 +41,22 @@ func (c *dynamic5hMemoryCache) ReleaseRefreshLock(_ context.Context, token strin
 	return nil
 }
 
-func (c *dynamic5hMemoryCache) TouchActiveUser(_ context.Context, userID int64, now, cutoff time.Time) error {
-	c.active[userID] = now
-	for id, seen := range c.active {
-		if !seen.After(cutoff) {
-			delete(c.active, id)
-		}
-	}
-	return nil
-}
-
-func (c *dynamic5hMemoryCache) ActiveUserIDs(_ context.Context, cutoff time.Time) ([]string, error) {
-	ids := make([]string, 0, len(c.active))
-	for id, seen := range c.active {
-		if seen.After(cutoff) {
-			ids = append(ids, strconv.FormatInt(id, 10))
-		}
-	}
-	return ids, nil
-}
-
-func (c *dynamic5hMemoryCache) RollingUserIDs(_ context.Context, cutoff time.Time) ([]string, error) {
-	ids := make([]string, 0, len(c.userMeter))
-	cutoffBucket := cutoff.Unix() / int64(dynamic5hMeterBucket/time.Second)
-	for id, buckets := range c.userMeter {
-		for bucket, value := range buckets {
-			if bucket >= cutoffBucket && value > 0 {
-				ids = append(ids, strconv.FormatInt(id, 10))
-				break
-			}
-		}
-	}
-	return ids, nil
-}
-
-func (c *dynamic5hMemoryCache) RecordUsage(
-	ctx context.Context,
-	userID, bucket int64,
-	now, cutoff time.Time,
-	amount float64,
-	_ time.Duration,
-) error {
-	_ = c.TouchActiveUser(ctx, userID, now, cutoff)
-	c.meter[bucket] += amount
-	if c.userMeter[userID] == nil {
-		c.userMeter[userID] = make(map[int64]float64)
-	}
-	c.userMeter[userID][bucket] += amount
-	return nil
-}
-
-func (c *dynamic5hMemoryCache) MeterValues(_ context.Context, latestBucket int64, count int) ([]float64, error) {
-	return dynamic5hMemoryValues(c.meter, latestBucket, count), nil
-}
-
-func (c *dynamic5hMemoryCache) UserMeterValues(_ context.Context, userID, latestBucket int64, count int) ([]float64, error) {
-	return dynamic5hMemoryValues(c.userMeter[userID], latestBucket, count), nil
-}
-
-func (c *dynamic5hMemoryCache) ReserveUserUsage(_ context.Context, userID int64, token string, observed, limit, amount float64, now time.Time, _ time.Duration) (bool, float64, error) {
-	if _, ok := c.reservations[token]; ok {
-		return true, c.pending[userID], nil
-	}
-	if observed+c.pending[userID]+amount > limit {
-		return false, c.pending[userID], nil
-	}
-	c.pending[userID] += amount
-	c.reservations[token] = amount
-	c.active[userID] = now
-	return true, c.pending[userID], nil
-}
-
-func (c *dynamic5hMemoryCache) SettleUserReservation(_ context.Context, userID int64, token string) error {
-	if amount, ok := c.reservations[token]; ok {
-		c.pending[userID] -= amount
-		delete(c.reservations, token)
-	}
-	return nil
-}
-
-func (c *dynamic5hMemoryCache) PendingUserUsage(_ context.Context, userID int64) (float64, error) {
-	return c.pending[userID], nil
-}
-
-func (c *dynamic5hMemoryCache) LoadUserPolicy(_ context.Context, userID int64) (Dynamic5hUserPolicy, error) {
-	policy, ok := c.policies[userID]
-	if !ok {
-		policy.Multiplier = 1
-	}
-	return policy, nil
-}
-
-func (c *dynamic5hMemoryCache) StoreUserPolicy(_ context.Context, userID int64, policy Dynamic5hUserPolicy) error {
-	c.policies[userID] = policy
-	return nil
-}
-
-func (c *dynamic5hMemoryCache) ResetUserUsage(_ context.Context, userID int64) error {
-	delete(c.userMeter, userID)
-	return nil
-}
-
-func dynamic5hMemoryValues(source map[int64]float64, latestBucket int64, count int) []float64 {
-	values := make([]float64, count)
-	for i := range values {
-		values[i] = source[latestBucket-int64(count-1-i)]
-	}
-	return values
-}
-
 func dynamic5hTestConfig() config.Dynamic5hPressureConfig {
 	return config.Dynamic5hPressureConfig{Enabled: true, PeakThreshold: 0.8, NormalThreshold: 0.7, EWMAAlpha: 1}
 }
 
 func newDynamic5hTestService(t *testing.T, now time.Time) (*Dynamic5hPressureService, context.Context) {
 	t.Helper()
-	svc := NewDynamic5hPressureService(nil, newDynamic5hMemoryCache(), &config.Config{Gateway: config.GatewayConfig{Dynamic5hPressure: dynamic5hTestConfig()}})
+	svc := NewDynamic5hPressureService(nil, &dynamic5hMemoryCache{}, &config.Config{Gateway: config.GatewayConfig{Dynamic5hPressure: dynamic5hTestConfig()}})
+	svc.quotaRepo = &subscription5hTestRepository{quotas: map[int64]Subscription5hQuota{}}
 	svc.now = func() time.Time { return now }
 	return svc, context.Background()
 }
 
 func storeDynamic5hTestStatus(svc *Dynamic5hPressureService, ctx context.Context, state Dynamic5hPressureState, capacity float64) {
 	svc.storeStatus(ctx, Dynamic5hPressureStatus{
-		Enabled: true, DataAvailable: true, CalibrationReady: capacity > 0,
-		State: state, PeakActive: state == Dynamic5hPressurePeak, PoolCapacity: capacity,
+		Enabled: true, DataAvailable: true,
+		State: state, PeakActive: state == Dynamic5hPressurePeak,
 		EvaluatedAt: svc.now().UTC(),
 	})
 }
@@ -205,176 +82,6 @@ func TestNextDynamic5hPressureStateUsesHysteresis(t *testing.T) {
 	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressureNormal, 0.85, true, cfg))
 	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressurePeak, 0.75, true, cfg))
 	require.Equal(t, Dynamic5hPressureNormal, nextDynamic5hPressureState(Dynamic5hPressurePeak, 0.69, true, cfg))
-}
-
-func TestDynamic5hCustomMultiplierIsNotCappedAtTwo(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, ctx := newDynamic5hTestService(t, now)
-	require.NoError(t, svc.SetUserPolicy(ctx, 7, Dynamic5hUserPolicy{Multiplier: 3.75}))
-	require.Equal(t, 3.75, svc.userPolicy(ctx, 7).Multiplier)
-}
-
-func TestDynamic5hExemptUserDoesNotReduceProtectedFairShare(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, ctx := newDynamic5hTestService(t, now)
-	cache := svc.cache.(*dynamic5hMemoryCache)
-	cache.active[1], cache.active[2] = now, now
-	cache.policies[1] = Dynamic5hUserPolicy{Exempt: true, Multiplier: 1}
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 200)
-	share, ok := svc.currentFairShareForUser(ctx, svc.loadStatus(ctx), now, 2)
-	require.True(t, ok)
-	require.Equal(t, 200.0, share)
-}
-
-func TestDynamic5hRejectedRetryDoesNotRenewActiveLease(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, baseCtx := newDynamic5hTestService(t, now)
-	cache := svc.cache.(*dynamic5hMemoryCache)
-	bucket := now.Unix() / int64(dynamic5hMeterBucket/time.Second)
-	cache.userMeter[9] = map[int64]float64{bucket: 120}
-	cache.active[9] = now.Add(-time.Hour)
-	storeDynamic5hTestStatus(svc, baseCtx, Dynamic5hPressurePeak, 100)
-	ctx := context.WithValue(baseCtx, ctxkey.RequestID, "retry-1")
-	require.ErrorIs(t, svc.CheckUser(ctx, 9), ErrDynamic5hPressureLimitExceeded)
-	ids := svc.activeUserIDs(baseCtx, now)
-	require.Empty(t, ids)
-}
-
-func TestDynamic5hFiveUsersShareFiveAccountCapacity(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, ctx := newDynamic5hTestService(t, now)
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressureNormal, 500)
-	for userID := int64(1); userID <= 5; userID++ {
-		svc.RecordUsage(ctx, userID, PlatformOpenAI, 80)
-		require.NoError(t, svc.CheckUser(ctx, userID))
-	}
-	for userID := int64(1); userID <= 5; userID++ {
-		require.InDelta(t, 80, svc.UserStatus(ctx, userID).UsagePercent, 0.01)
-	}
-
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 500)
-	for userID := int64(1); userID <= 5; userID++ {
-		require.NoError(t, svc.CheckUser(ctx, userID), "users below their equal dynamic share must continue during Peak")
-	}
-}
-
-func TestDynamic5hFairShareBorrowingAndPeakReclamation(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, ctx := newDynamic5hTestService(t, now)
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressureNormal, 500)
-
-	// With only two active users, each may borrow the idle capacity.
-	svc.RecordUsage(ctx, 1, PlatformOpenAI, 180)
-	svc.RecordUsage(ctx, 2, PlatformOpenAI, 180)
-	require.NoError(t, svc.CheckUser(ctx, 1))
-	require.NoError(t, svc.CheckUser(ctx, 2))
-	require.InDelta(t, 72, svc.UserStatus(ctx, 1).UsagePercent, 0.01)
-
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 500)
-	// Late arrivals immediately join the protected population and retain a fair
-	// chance. There is no generation snapshot and no zero-remaining penalty.
-	for _, userID := range []int64{3, 4, 5} {
-		require.NoError(t, svc.CheckUser(ctx, userID))
-		svc.RecordUsage(ctx, userID, PlatformOpenAI, 10)
-	}
-
-	// Five users now share five effective account-windows: fair share = 100.
-	require.ErrorIs(t, svc.CheckUser(ctx, 1), ErrDynamic5hPressureLimitExceeded)
-	require.ErrorIs(t, svc.CheckUser(ctx, 2), ErrDynamic5hPressureLimitExceeded)
-	for _, userID := range []int64{3, 4, 5} {
-		require.NoError(t, svc.CheckUser(ctx, userID))
-		status := svc.UserStatus(ctx, userID)
-		require.False(t, status.CurrentlyLimited)
-		require.InDelta(t, 10, status.UsagePercent, 0.01)
-		require.InDelta(t, 90, status.RemainingPercent, 0.01)
-	}
-	overused := svc.UserStatus(ctx, 1)
-	require.True(t, overused.CurrentlyLimited)
-	require.InDelta(t, 180, overused.UsagePercent, 0.01)
-	require.Zero(t, overused.RemainingPercent)
-}
-
-func TestDynamic5hAdminOverviewSortsActiveUsersByUsage(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, ctx := newDynamic5hTestService(t, now)
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 300)
-	svc.RecordUsage(ctx, 1, PlatformOpenAI, 180)
-	svc.RecordUsage(ctx, 2, PlatformOpenAI, 30)
-	svc.RecordUsage(ctx, 3, PlatformOpenAI, 90)
-
-	overview := svc.AdminOverview(ctx)
-	require.Equal(t, []int64{1, 3, 2}, []int64{
-		overview.Users[0].UserID,
-		overview.Users[1].UserID,
-		overview.Users[2].UserID,
-	})
-	require.InDelta(t, 180, overview.Users[0].UsagePercent, 0.01)
-	require.True(t, overview.Users[0].CurrentlyLimited)
-	require.InDelta(t, 90, overview.Users[1].UsagePercent, 0.01)
-	require.False(t, overview.Users[1].CurrentlyLimited)
-}
-
-func TestDynamic5hNewPeakUserGetsDynamicFairShare(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, ctx := newDynamic5hTestService(t, now)
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 200)
-	svc.RecordUsage(ctx, 10, PlatformOpenAI, 150)
-
-	lateCtx := context.WithValue(ctx, ctxkey.RequestID, "late-user-20")
-	require.NoError(t, svc.CheckUser(lateCtx, 20), "a user joining during Peak must not start at 0% remaining")
-	late := svc.UserStatus(ctx, 20)
-	require.True(t, late.LimitActive)
-	require.False(t, late.CurrentlyLimited)
-	require.Zero(t, late.UsagePercent)
-	require.InDelta(t, 100, late.RemainingPercent, 0.01)
-
-	// Adding the user changes both shares to 100. The earlier user loses borrowed
-	// capacity but keeps already successful usage.
-	require.ErrorIs(t, svc.CheckUser(ctx, 10), ErrDynamic5hPressureLimitExceeded)
-}
-
-func TestDynamic5hInactiveDemandExpiresWithoutErasingRollingUsage(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	current := now
-	svc, ctx := newDynamic5hTestService(t, now)
-	svc.now = func() time.Time { return current }
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 200)
-
-	// Both users initially compete for the pool, so each fair share is 100.
-	svc.RecordUsage(ctx, 1, PlatformOpenAI, 120)
-	svc.RecordUsage(ctx, 2, PlatformOpenAI, 20)
-	require.ErrorIs(t, svc.CheckUser(ctx, 1), ErrDynamic5hPressureLimitExceeded)
-
-	// After the short demand lease expires, user 1 can return and borrow the
-	// idle user's share. Their previous 120 units are still in the rolling 5h
-	// meter, but the sole active user's current fair share is now 200.
-	current = now.Add(dynamic5hActiveLease + time.Second)
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 200)
-	user1Ctx := context.WithValue(ctx, ctxkey.RequestID, "returning-user-1")
-	require.NoError(t, svc.CheckUser(user1Ctx, 1))
-	require.InDelta(t, 60, svc.UserStatus(ctx, 1).UsagePercent, 0.01)
-
-	// User 2 rejoins immediately on a new request. The population returns to
-	// two, user 1's old usage is not erased, and excess borrowing is reclaimed.
-	user2Ctx := context.WithValue(ctx, ctxkey.RequestID, "returning-user-2")
-	require.NoError(t, svc.CheckUser(user2Ctx, 2))
-	require.ErrorIs(t, svc.CheckUser(ctx, 1), ErrDynamic5hPressureLimitExceeded)
-	require.InDelta(t, 120, svc.UserStatus(ctx, 1).UsagePercent, 0.01)
-}
-
-func TestDynamic5hNormalImmediatelyReleasesPeakLimit(t *testing.T) {
-	now := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
-	svc, ctx := newDynamic5hTestService(t, now)
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressurePeak, 100)
-	svc.RecordUsage(ctx, 7, PlatformOpenAI, 120)
-	require.ErrorIs(t, svc.CheckUser(ctx, 7), ErrDynamic5hPressureLimitExceeded)
-
-	storeDynamic5hTestStatus(svc, ctx, Dynamic5hPressureNormal, 100)
-	require.NoError(t, svc.CheckUser(ctx, 7))
-	status := svc.UserStatus(ctx, 7)
-	require.False(t, status.LimitActive)
-	require.False(t, status.CurrentlyLimited)
-	require.InDelta(t, 120, status.UsagePercent, 0.01)
 }
 
 func TestDynamic5hSevenDayExhaustionRemovesCapacityUntilRecovery(t *testing.T) {

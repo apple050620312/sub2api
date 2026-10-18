@@ -6,13 +6,13 @@
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('dynamic5h.workspaceTitle') }}</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('dynamic5h.workspaceDescription') }}</p>
         </div>
-        <button class="btn-secondary inline-flex h-9 w-9 items-center justify-center" :disabled="loading" :title="t('dynamic5h.refresh')" @click="load">
+        <button class="btn btn-secondary inline-flex h-9 w-9 items-center justify-center" :disabled="loading" :title="t('dynamic5h.refresh')" @click="load">
           <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
         </button>
       </header>
       <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('dynamic5h.workspaceTitle')">
-        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn-primary' : 'btn-secondary'" @click="tab = 'setup'">{{ t('dynamic5h.setupTitle') }}</button>
-        <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn-primary' : 'btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
+        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'setup'">{{ t('dynamic5h.setupTitle') }}</button>
+        <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
       </div>
       <div v-show="tab === 'usage'" class="space-y-8" role="tabpanel">
       <div v-if="loading && !status" class="flex justify-center py-16"><LoadingSpinner /></div>
@@ -40,9 +40,7 @@
               </div>
             </div>
             <div class="mt-4 flex flex-wrap gap-4 text-xs text-gray-500 dark:text-gray-400">
-              <span>{{ t('dynamic5h.multiplier', { value: status.multiplier || 1 }) }}</span>
               <span v-if="status.exempt">{{ t('dynamic5h.exempt') }}</span>
-              <span v-if="status.pending_percent > 0">{{ t('dynamic5h.pending', { value: status.pending_percent.toFixed(1) }) }}</span>
             </div>
           </section>
           <section class="rounded-lg border border-gray-200 bg-white p-6 dark:border-dark-700 dark:bg-dark-800">
@@ -83,9 +81,11 @@ import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import OnboardingView from '@/views/user/OnboardingView.vue'
 import { getDynamic5hPressure } from '@/api/user'
+import { useAppStore } from '@/stores/app'
 import type { Dynamic5hUserStatus } from '@/types'
 
 const { t } = useI18n()
+const app = useAppStore()
 const route = useRoute()
 const tab = ref<'setup' | 'usage'>(route.query.code || route.query.tab === 'setup' ? 'setup' : 'usage')
 const money = (value = 0) => `$${value.toFixed(2)}`
@@ -103,7 +103,7 @@ const stateLabel = computed(() => t(`dynamic5h.${status.value?.state === 'peak' 
 const stateClass = computed(() => status.value?.state === 'peak' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300')
 const warningClass = computed(() => ({ limited: 'text-red-600', borrowed: 'text-amber-600', warning: 'text-amber-500', normal: 'text-emerald-600' }[status.value?.warning_level || 'normal']))
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : t('dynamic5h.now')
-const load = async () => { loading.value = true; try { status.value = await getDynamic5hPressure() } finally { loading.value = false } }
+const load = async () => { loading.value = true; try { status.value = await getDynamic5hPressure() } catch { app.showError('加载服务状态失败') } finally { loading.value = false } }
 
 onMounted(() => { void load(); timer = setInterval(() => void load(), 30_000) })
 onBeforeUnmount(() => { if (timer) clearInterval(timer) })

@@ -19,15 +19,15 @@ func NewDynamic5hPolicyRepository(db *sql.DB) service.Dynamic5hPolicyRepository 
 
 func (r *dynamic5hPolicyRepository) GetUserPolicy(ctx context.Context, userID int64) (service.Dynamic5hUserPolicy, bool, error) {
 	var policy service.Dynamic5hUserPolicy
-	err := r.db.QueryRowContext(ctx, `SELECT exempt, multiplier FROM dynamic_5h_user_policies WHERE user_id = $1`, userID).Scan(&policy.Exempt, &policy.Multiplier)
+	err := r.db.QueryRowContext(ctx, `SELECT exempt FROM dynamic_5h_user_policies WHERE user_id = $1`, userID).Scan(&policy.Exempt)
 	if err == sql.ErrNoRows {
-		return service.Dynamic5hUserPolicy{Multiplier: 1}, false, nil
+		return service.Dynamic5hUserPolicy{}, false, nil
 	}
 	return policy, err == nil, err
 }
 
 func (r *dynamic5hPolicyRepository) ListUserPolicies(ctx context.Context) (map[int64]service.Dynamic5hUserPolicy, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT user_id, exempt, multiplier FROM dynamic_5h_user_policies`)
+	rows, err := r.db.QueryContext(ctx, `SELECT user_id, exempt FROM dynamic_5h_user_policies`)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (r *dynamic5hPolicyRepository) ListUserPolicies(ctx context.Context) (map[i
 	for rows.Next() {
 		var userID int64
 		var policy service.Dynamic5hUserPolicy
-		if err := rows.Scan(&userID, &policy.Exempt, &policy.Multiplier); err != nil {
+		if err := rows.Scan(&userID, &policy.Exempt); err != nil {
 			return nil, err
 		}
 		policies[userID] = policy
@@ -58,8 +58,8 @@ func (r *dynamic5hPolicyRepository) UpsertUserPolicy(ctx context.Context, userID
 	if actorUserID > 0 {
 		actor = actorUserID
 	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO dynamic_5h_user_policies (user_id, multiplier, exempt, updated_by, updated_at)
-VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (user_id) DO UPDATE SET multiplier=EXCLUDED.multiplier, exempt=EXCLUDED.exempt, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, userID, policy.Multiplier, policy.Exempt, actor); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO dynamic_5h_user_policies (user_id, exempt, updated_by, updated_at)
+VALUES ($1,$2,$3,NOW()) ON CONFLICT (user_id) DO UPDATE SET multiplier=1, exempt=EXCLUDED.exempt, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, userID, policy.Exempt, actor); err != nil {
 		return err
 	}
 	newJSON, _ := json.Marshal(policy)
@@ -76,9 +76,9 @@ VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (user_id) DO UPDATE SET multiplier=EXCLUD
 
 func dynamic5hPolicyTx(ctx context.Context, tx *sql.Tx, userID int64) (service.Dynamic5hUserPolicy, bool, error) {
 	var p service.Dynamic5hUserPolicy
-	err := tx.QueryRowContext(ctx, `SELECT exempt, multiplier FROM dynamic_5h_user_policies WHERE user_id=$1 FOR UPDATE`, userID).Scan(&p.Exempt, &p.Multiplier)
+	err := tx.QueryRowContext(ctx, `SELECT exempt FROM dynamic_5h_user_policies WHERE user_id=$1 FOR UPDATE`, userID).Scan(&p.Exempt)
 	if err == sql.ErrNoRows {
-		return service.Dynamic5hUserPolicy{Multiplier: 1}, false, nil
+		return service.Dynamic5hUserPolicy{}, false, nil
 	}
 	return p, err == nil, err
 }
@@ -96,8 +96,8 @@ func (r *dynamic5hPolicyRepository) ListAuditLogs(ctx context.Context, limit int
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT a.id,a.user_id,a.actor_user_id,COALESCE(u.email,''),a.action,a.reason,a.before_usage,a.after_usage,a.old_policy,a.new_policy,a.created_at
-FROM dynamic_5h_audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY a.created_at DESC LIMIT $1`, limit)
+	rows, err := r.db.QueryContext(ctx, `SELECT a.id,a.user_id,a.actor_user_id,COALESCE(u.email,''),COALESCE(target.email,''),a.action,a.reason,a.before_usage,a.after_usage,a.old_policy,a.new_policy,a.created_at
+FROM dynamic_5h_audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id LEFT JOIN users target ON target.id=a.user_id ORDER BY a.created_at DESC LIMIT $1`, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ FROM dynamic_5h_audit_logs a LEFT JOIN users u ON u.id=a.actor_user_id ORDER BY 
 	for rows.Next() {
 		var item service.Dynamic5hAuditLog
 		var oldJSON, newJSON []byte
-		if err := rows.Scan(&item.ID, &item.UserID, &item.ActorUserID, &item.ActorEmail, &item.Action, &item.Reason, &item.BeforeUsage, &item.AfterUsage, &oldJSON, &newJSON, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.UserID, &item.ActorUserID, &item.ActorEmail, &item.UserEmail, &item.Action, &item.Reason, &item.BeforeUsage, &item.AfterUsage, &oldJSON, &newJSON, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if len(oldJSON) > 0 {

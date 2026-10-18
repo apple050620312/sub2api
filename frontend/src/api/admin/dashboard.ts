@@ -56,7 +56,7 @@ export async function getDynamic5hPressureOverview(): Promise<Dynamic5hAdminOver
   return data
 }
 
-export async function setDynamic5hUserPolicy(userId: number, policy: { exempt: boolean; multiplier: number }) {
+export async function setDynamic5hUserPolicy(userId: number, policy: { exempt: boolean }) {
   const { data } = await apiClient.put(`/admin/dashboard/5h-pressure/users/${userId}/policy`, policy)
   return data
 }

@@ -3,16 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 )
-
-func normalizedDynamic5hPolicy(policy Dynamic5hUserPolicy) Dynamic5hUserPolicy {
-	if policy.Multiplier <= 0 || math.IsNaN(policy.Multiplier) || math.IsInf(policy.Multiplier, 0) {
-		policy.Multiplier = 1
-	}
-	return policy
-}
 
 func (s *Dynamic5hPressureService) policySnapshot(ctx context.Context) (map[int64]Dynamic5hUserPolicy, error) {
 	if s.policyRepo == nil {
@@ -52,16 +44,10 @@ func (s *Dynamic5hPressureService) usableStatus(status Dynamic5hPressureStatus) 
 	age := s.now().UTC().Sub(status.EvaluatedAt)
 	status.Stale = status.EvaluatedAt.IsZero() || age < -5*time.Second || age > maxAge
 	status.Enabled = s.cfg.Enabled
-	if status.CalibrationVersion != 2 {
-		status.CalibrationReady = false
-		status.PoolCapacity = 0
-		status.PlusBaseline = 0
-	}
 	if !status.Enabled || status.Stale {
 		status.State = Dynamic5hPressureNormal
 		status.PeakActive = false
 		status.DataAvailable = false
-		status.CalibrationReady = false
 	}
 	return status
 }

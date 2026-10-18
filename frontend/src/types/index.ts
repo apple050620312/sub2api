@@ -1987,10 +1987,8 @@ export interface DashboardStats {
 
 export interface Dynamic5hPressureStatus {
   stale: boolean
-  calibration_samples?: number
   enabled: boolean
   data_available: boolean
-  calibration_ready: boolean
   pressure: number
   raw_pressure: number
   state: 'normal' | 'peak'
@@ -2000,7 +1998,6 @@ export interface Dynamic5hPressureStatus {
   remaining_capacity: number
   burn_rate_per_hour: number
   projected_demand: number
-  pool_capacity: number
   evaluated_at: string
   capacity_recovering_next_hour: number
   excluded_account_count: number
@@ -2016,8 +2013,6 @@ export interface Dynamic5hUserStatus {
   usage_usd: number
   remaining_usd: number
   pool?: {
-    calibration_ready: boolean
-    calibration_samples: number
     five_hour_used_percent?: number
     five_hour_sample_count: number
     seven_day_used_percent?: number
@@ -2034,10 +2029,8 @@ export interface Dynamic5hUserStatus {
   remaining_percent: number
   window_started_at?: string
   recover_at?: string
-  multiplier: number
   exempt: boolean
   warning_level: 'normal' | 'warning' | 'borrowed' | 'limited'
-  pending_percent: number
 }
 
 export interface Dynamic5hAdminUserStatus extends Dynamic5hUserStatus {
@@ -2045,7 +2038,6 @@ export interface Dynamic5hAdminUserStatus extends Dynamic5hUserStatus {
   email: string
   active: boolean
   exempt: boolean
-  multiplier: number
 }
 
 export interface Dynamic5hAdminOverview {
@@ -2067,14 +2059,15 @@ export interface Dynamic5hAdminOverview {
     id: number
     user_id: number
     actor_user_id?: number
+    actor_email?: string
+    user_email?: string
     action: string
     before_usage?: number
     after_usage?: number
-    old_policy?: { exempt: boolean; multiplier: number }
-    new_policy?: { exempt: boolean; multiplier: number }
+    old_policy?: { exempt: boolean }
+    new_policy?: { exempt: boolean }
     created_at: string
   }>
-  guaranteed_capacity_ratio: number
 }
 
 export interface UsageStatsResponse {

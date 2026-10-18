@@ -6,13 +6,13 @@
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('dynamic5h.adminWorkspaceTitle') }}</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('dynamic5h.workspaceDescription') }}</p>
         </div>
-        <button class="btn-secondary inline-flex h-9 w-9 items-center justify-center" :disabled="loading" :title="t('admin.pressure5hPage.refresh')" @click="load">
+        <button class="btn btn-secondary inline-flex h-9 w-9 items-center justify-center" :disabled="loading" :title="t('admin.pressure5hPage.refresh')" @click="load">
           <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
         </button>
       </header>
       <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('dynamic5h.adminWorkspaceTitle')">
-        <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn-primary' : 'btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
-        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn-primary' : 'btn-secondary'" @click="tab = 'setup'">{{ t('dynamic5h.setupTitle') }}</button>
+        <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
+        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'setup'">{{ t('dynamic5h.setupTitle') }}</button>
       </div>
       <div v-show="tab === 'usage'" class="space-y-8" role="tabpanel">
       <div v-if="loading && !overview" class="flex justify-center py-16"><LoadingSpinner /></div>
@@ -25,44 +25,29 @@
               <p class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ metric.value }}</p>
             </div>
           </section>
-          <div v-if="overview.guaranteed_capacity_ratio > 1" class="rounded-lg border border-amber-300 bg-amber-50 px-5 py-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-            {{ t('admin.pressure5hPage.overcommitted', { value: (overview.guaranteed_capacity_ratio * 100).toFixed(1) }) }}
-          </div>
 
-          <section class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
-            <div class="border-b border-gray-200 px-6 py-5 dark:border-dark-700">
-              <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.users') }}</h2>
-            </div>
-            <div v-if="overview.users.length === 0" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
-            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
-              <div v-for="user in overview.users" :key="user.user_id" class="grid gap-6 px-6 py-9 lg:grid-cols-[minmax(250px,1.2fr)_minmax(180px,1.3fr)_100px_170px_minmax(250px,auto)] lg:items-center">
-                <div class="min-w-0"><div class="flex flex-nowrap items-center gap-2"><p class="truncate font-medium text-gray-900 dark:text-white">{{ user.email || '用户' }}</p><span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium" :class="user.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'">{{ t(`admin.pressure5hPage.${user.active ? 'active' : 'inactive'}`) }}</span></div></div>
-                <div><Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" /><p class="mt-2 text-xs text-gray-500">{{ money(user.usage_usd) }} / {{ money(user.limit_usd) }}</p></div>
-                <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
-                <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.recover') }}</p><p class="text-sm text-gray-700 dark:text-gray-200">{{ formatTime(user.recover_at) }}</p></div>
-                <div class="flex flex-wrap items-center gap-2">
-                  <label class="flex h-8 items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t('admin.pressure5hPage.multiplier') }}
-                    <input class="input h-8 w-20 px-2 text-xs" type="number" min="0.01" step="0.01" v-model="policyMultipliers[user.user_id]" @keydown.enter.prevent />
-                  </label>
-                  <button class="btn-primary h-8 px-2 text-xs" :disabled="saving || !validMultiplier(user)" @click="updateMultiplier(user)">{{ t('admin.pressure5hPage.apply') }}</button>
-                  <button :disabled="saving" class="h-8 px-2 text-xs" :class="user.exempt ? 'btn-primary' : 'btn-secondary'" :aria-pressed="user.exempt" @click="toggleExempt(user)">{{ t('admin.pressure5hPage.exempt') }}</button>
-                  <button class="btn-secondary h-8 px-2 text-xs" :disabled="saving" @click="resetUser(user.user_id)">{{ t('admin.pressure5hPage.resetUsage') }}</button>
-                </div>
-              </div>
-            </div>
+          <section class="card">
+            <div class="border-b border-gray-100 p-6 dark:border-dark-700"><h2 class="font-semibold">{{ t('admin.pressure5hPage.users') }}</h2><p class="mt-2 text-sm text-gray-500">五小时额度为有效订阅七天美元额度的 15%。非尖峰不额外限流。</p></div>
+            <DataTable :columns="columns" :data="overview.users" row-key="user_id" :actions-count="2">
+              <template #cell-email="{ row }"><p class="whitespace-nowrap font-medium">{{ row.email || '已删除用户' }}</p><span class="mt-1 inline-block text-xs text-gray-500">{{ t(`admin.pressure5hPage.${row.active ? 'active' : 'inactive'}`) }}</span></template>
+              <template #cell-usage="{ row }"><div class="w-44"><Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="row.usage_percent" /><p class="mt-2 text-xs text-gray-500">{{ money(row.usage_usd) }} / {{ money(row.limit_usd) }}</p></div></template>
+              <template #cell-remaining_percent="{ value }">{{ value.toFixed(1) }}%</template>
+              <template #cell-recover_at="{ value }"><span class="whitespace-nowrap">{{ formatTime(value) }}</span></template>
+              <template #cell-actions="{ row }"><div class="flex flex-wrap gap-2"><button class="btn btn-secondary btn-sm" :disabled="saving" :aria-pressed="row.exempt" @click="askAction(row, 'exempt')">{{ row.exempt ? '取消豁免' : '豁免限流' }}</button><button class="btn btn-secondary btn-sm" :disabled="saving" @click="askAction(row, 'reset')">重置用量</button></div></template>
+            </DataTable>
           </section>
 
 
           <details class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-800">
             <summary class="cursor-pointer list-none px-6 py-5 font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.audit') }}</summary>
             <div v-if="overview.audit_logs.length === 0" class="p-6 text-sm text-gray-500">{{ t('admin.pressure5hPage.noAudit') }}</div>
-            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-3 px-6 py-4 text-sm md:grid-cols-[170px_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>ID {{ log.actor_user_id || '-' }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · 用户 {{ log.user_id }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span></div></div>
+            <div v-else class="divide-y divide-gray-100 dark:divide-dark-700"><div v-for="log in overview.audit_logs" :key="log.id" class="grid gap-3 px-6 py-4 text-sm md:grid-cols-[170px_1fr_2fr]"><span>{{ formatTime(log.created_at) }}</span><span>{{ log.actor_email || '系统' }}</span><span>{{ t(`admin.pressure5hPage.auditActions.${log.action}`) }} · {{ log.user_email || '已删除用户' }}<small class="mt-1 block text-gray-400">{{ auditChange(log) }}</small></span></div></div>
           </details>
         </div>
       </div>
       </div>
       <div v-show="tab === 'setup'" role="tabpanel"><OnboardingView /></div>
+      <ConfirmDialog :show="!!confirmation" :title="confirmation?.title || ''" :message="confirmation?.message || ''" @cancel="confirmation = null" @confirm="confirmAction" />
     </div>
   </AppLayout>
 </template>
@@ -73,6 +58,9 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
 import Icon from '@/components/icons/Icon.vue'
+import DataTable from '@/components/common/DataTable.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import { useAppStore } from '@/stores/app'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import OnboardingView from '@/views/admin/OnboardingView.vue'
 import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolicy } from '@/api/admin/dashboard'
@@ -83,7 +71,9 @@ const tab = ref<'usage' | 'setup'>('usage')
 const money = (value = 0) => `$${value.toFixed(2)}`
 const overview = ref<Dynamic5hAdminOverview | null>(null)
 const loading = ref(false)
-const policyMultipliers = ref<Record<number, string | number>>({})
+const app = useAppStore()
+const columns = [{ key: 'email', label: '用户邮箱' }, { key: 'usage', label: '五小时用量' }, { key: 'remaining_percent', label: '剩余' }, { key: 'recover_at', label: '恢复时间' }, { key: 'actions', label: '操作' }]
+const confirmation = ref<{ user: Dynamic5hAdminUserStatus; action: 'exempt' | 'reset'; title: string; message: string } | null>(null)
 const saving = ref(false)
 let timer: ReturnType<typeof setInterval> | undefined
 
@@ -100,47 +90,29 @@ const metrics = computed(() => overview.value ? [
 const formatTime = (value?: string) => value ? new Date(value).toLocaleString() : '-'
 const auditChange = (log: Dynamic5hAdminOverview['audit_logs'][number]) => log.action === 'usage_reset'
   ? `${(log.before_usage || 0).toFixed(2)} -> ${(log.after_usage || 0).toFixed(2)}`
-  : `${log.old_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.old_policy?.multiplier || 1}x`} -> ${log.new_policy?.exempt ? t('admin.pressure5hPage.exempt') : `${log.new_policy?.multiplier || 1}x`}`
+  : `${log.old_policy?.exempt ? '豁免限流' : '按订阅限流'} → ${log.new_policy?.exempt ? '豁免限流' : '按订阅限流'}`
 const load = async () => {
   if (loading.value) return
   loading.value = true
   try {
     overview.value = await getDynamic5hPressureOverview()
-    for (const user of overview.value.users) {
-      policyMultipliers.value[user.user_id] ??= user.multiplier || 1
-    }
-  } finally { loading.value = false }
+  } catch { app.showError('加载服务状态失败') } finally { loading.value = false }
 }
-const validMultiplier = (user: Dynamic5hAdminUserStatus) => {
-  const value = Number(policyMultipliers.value[user.user_id])
-  return Number.isFinite(value) && value >= 0.01 && value !== (user.multiplier || 1)
+function askAction(user: Dynamic5hAdminUserStatus, action: 'exempt' | 'reset') {
+  const title = action === 'reset' ? '重置五小时用量' : user.exempt ? '取消限流豁免' : '豁免五小时限流'
+  confirmation.value = { user, action, title, message: `确定对 ${user.email || '已删除用户'} 执行“${title}”？${action === 'reset' ? '仅清零额外五小时窗口，订阅原始账单和用量保持不变。' : '非尖峰始终不受此额外限制。'}` }
 }
-const updateMultiplier = async (user: Dynamic5hAdminUserStatus) => {
-  if (saving.value || !validMultiplier(user)) return
-  const multiplier = Number(policyMultipliers.value[user.user_id])
-  if (!window.confirm(t('admin.pressure5hPage.applyConfirm', { user: user.user_id, before: user.multiplier || 1, after: multiplier }))) return
+async function confirmAction() {
+  const pending = confirmation.value
+  if (!pending || saving.value) return
+  confirmation.value = null
   saving.value = true
   try {
-    await setDynamic5hUserPolicy(user.user_id, { exempt: user.exempt, multiplier })
-    delete policyMultipliers.value[user.user_id]
+    if (pending.action === 'reset') await resetDynamic5hUser(pending.user.user_id)
+    else await setDynamic5hUserPolicy(pending.user.user_id, { exempt: !pending.user.exempt })
     await load()
-  } finally { saving.value = false }
-}
-const toggleExempt = async (user: Dynamic5hAdminUserStatus) => {
-  if (saving.value || !window.confirm(t('admin.pressure5hPage.exemptConfirm', { user: user.user_id }))) return
-  saving.value = true
-  try {
-    await setDynamic5hUserPolicy(user.user_id, { exempt: !user.exempt, multiplier: user.multiplier || 1 })
-    await load()
-  } finally { saving.value = false }
-}
-const resetUser = async (userId: number) => {
-  if (saving.value || !window.confirm(t('admin.pressure5hPage.resetConfirm'))) return
-  saving.value = true
-  try {
-    await resetDynamic5hUser(userId)
-    await load()
-  } finally { saving.value = false }
+    app.showSuccess('已更新用户限流策略')
+  } catch { app.showError('更新失败，请稍后重试') } finally { saving.value = false }
 }
 
 onMounted(() => { void load(); timer = setInterval(() => void load(), 30_000) })

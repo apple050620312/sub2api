@@ -25,8 +25,7 @@ type DashboardHandler struct {
 }
 
 type Dynamic5hPolicyRequest struct {
-	Exempt     bool    `json:"exempt"`
-	Multiplier float64 `json:"multiplier"`
+	Exempt bool `json:"exempt"`
 }
 
 // NewDashboardHandler creates a new admin dashboard handler
@@ -62,27 +61,6 @@ func (h *DashboardHandler) GetDynamic5hPressureOverview(c *gin.Context) {
 	response.Success(c, h.dynamic5hPressure.AdminOverview(c.Request.Context()))
 }
 
-func (h *DashboardHandler) ReconcileDynamic5hMetering(c *gin.Context) {
-	if h.dynamic5hPressure == nil {
-		response.InternalError(c, "Dynamic 5h service unavailable")
-		return
-	}
-	var request struct {
-		Replay  bool  `json:"replay"`
-		AfterID int64 `json:"after_id"`
-	}
-	if err := c.ShouldBindJSON(&request); err != nil || request.AfterID < 0 {
-		response.BadRequest(c, "Invalid reconciliation request")
-		return
-	}
-	result, err := h.dynamic5hPressure.ReconcileMeters(c.Request.Context(), request.Replay, request.AfterID)
-	if err != nil {
-		response.InternalError(c, "Dynamic 5h reconciliation failed")
-		return
-	}
-	response.Success(c, result)
-}
-
 func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
 	if h.dynamic5hPressure == nil {
 		response.InternalError(c, "Dynamic 5h service unavailable")
@@ -98,18 +76,11 @@ func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
 		response.BadRequest(c, "Invalid policy")
 		return
 	}
-	if req.Multiplier == 0 {
-		req.Multiplier = 1
-	}
-	if req.Multiplier <= 0 || math.IsNaN(req.Multiplier) || math.IsInf(req.Multiplier, 0) {
-		response.BadRequest(c, "Multiplier must be a positive number")
-		return
-	}
-	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}, getAdminIDFromContext(c)); err != nil {
+	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt}, getAdminIDFromContext(c)); err != nil {
 		response.Error(c, 500, err.Error())
 		return
 	}
-	response.Success(c, gin.H{"user_id": userID, "exempt": req.Exempt, "multiplier": req.Multiplier})
+	response.Success(c, gin.H{"user_id": userID, "exempt": req.Exempt})
 }
 
 func (h *DashboardHandler) ResetDynamic5hUser(c *gin.Context) {

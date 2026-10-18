@@ -1,5 +1,5 @@
 import { apiClient } from '../client'
-import type { OnboardingConfig, OnboardingAdminOverview } from './onboardingTypes'
+import type { OnboardingConfig, OnboardingAdminOverview, OnboardingDiscordMember } from './onboardingTypes'
 export type { OnboardingConfig, OnboardingAdminOverview } from './onboardingTypes'
 
 export async function getOverview(): Promise<OnboardingAdminOverview> {
@@ -17,10 +17,9 @@ export async function updateConfig(payload: Record<string, unknown>): Promise<On
   return data
 }
 
-export async function bindAccount(accountId: number, userId: number, publicFallback: boolean): Promise<void> {
+export async function bindAccount(accountId: number, userId: number): Promise<void> {
   await apiClient.post(`/admin/onboarding/accounts/${accountId}/bind`, {
     user_id: userId,
-    public_fallback: publicFallback,
   })
 }
 
@@ -28,6 +27,15 @@ export async function unbindAccount(accountId: number): Promise<void> {
   await apiClient.delete(`/admin/onboarding/accounts/${accountId}/bind`)
 }
 
-export const onboardingAPI = { getOverview, getConfig, updateConfig, bindAccount, unbindAccount }
+export async function getDiscordMembers(search = ''): Promise<OnboardingDiscordMember[]> {
+  const { data } = await apiClient.get<OnboardingDiscordMember[]>('/admin/onboarding/discord/members', { params: { search } })
+  return data
+}
+
+export async function bindDiscordMember(userId: number, discordUserId: string): Promise<void> {
+  await apiClient.post('/admin/onboarding/discord/bind', { user_id: userId, discord_user_id: discordUserId })
+}
+
+export const onboardingAPI = { getOverview, getConfig, updateConfig, bindAccount, unbindAccount, getDiscordMembers, bindDiscordMember }
 export default onboardingAPI
 

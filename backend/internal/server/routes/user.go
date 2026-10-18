@@ -34,6 +34,8 @@ func RegisterUserRoutes(
 			user.POST("/onboarding/discord/complete", h.Onboarding.CompleteDiscord)
 			user.POST("/onboarding/openai/start", h.Onboarding.StartOpenAI)
 			user.POST("/onboarding/openai/complete", h.Onboarding.CompleteOpenAI)
+			user.PATCH("/onboarding/accounts/:id", h.Onboarding.SetOwnedAccountPaused)
+			user.DELETE("/onboarding/accounts/:id", h.Onboarding.DeleteOwnedAccount)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
 			user.GET("/aff", h.User.GetAffiliate)

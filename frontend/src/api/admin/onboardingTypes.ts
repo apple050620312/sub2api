@@ -2,6 +2,13 @@ import type { OnboardingAccountSummary, OnboardingConfig, OnboardingDiscordBindi
 
 export type { OnboardingConfig }
 
+export interface OnboardingDiscordMember {
+  id: string
+  username: string
+  display_name: string
+  bound_email?: string
+}
+
 export interface OnboardingAdminUser {
   user_id: number
   email: string

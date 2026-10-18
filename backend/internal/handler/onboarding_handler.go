@@ -125,13 +125,12 @@ func (h *OnboardingHandler) CompleteOpenAI(c *gin.Context) {
 }
 
 type onboardingConfigRequest struct {
-	Enabled               *bool                                         `json:"enabled"`
-	Discord               onboardingDiscordConfigRequest                `json:"discord"`
-	PlanUnits             map[string]int                                `json:"plan_units"`
-	SubscriptionRules     map[string]service.OnboardingSubscriptionRule `json:"subscription_rules"`
-	OpenAIRedirectURI     string                                        `json:"openai_redirect_uri"`
-	CCSwitchDownloadURL   string                                        `json:"ccswitch_download_url"`
-	PublicFallbackDefault *bool                                         `json:"public_fallback_default"`
+	Enabled             *bool                                         `json:"enabled"`
+	Discord             onboardingDiscordConfigRequest                `json:"discord"`
+	PlanUnits           map[string]int                                `json:"plan_units"`
+	SubscriptionRules   map[string]service.OnboardingSubscriptionRule `json:"subscription_rules"`
+	OpenAIRedirectURI   string                                        `json:"openai_redirect_uri"`
+	CCSwitchDownloadURL string                                        `json:"ccswitch_download_url"`
 }
 
 type onboardingDiscordConfigRequest struct {
@@ -171,9 +170,6 @@ func (h *OnboardingHandler) UpdateAdminConfig(c *gin.Context) {
 	if req.Enabled != nil {
 		next.Enabled = *req.Enabled
 	}
-	if req.PublicFallbackDefault != nil {
-		next.PublicFallbackDefault = *req.PublicFallbackDefault
-	}
 	value, err := h.service.UpdateConfig(c.Request.Context(), next)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -183,8 +179,7 @@ func (h *OnboardingHandler) UpdateAdminConfig(c *gin.Context) {
 }
 
 type onboardingBindAccountRequest struct {
-	UserID         int64 `json:"user_id" binding:"required,gt=0"`
-	PublicFallback bool  `json:"public_fallback"`
+	UserID int64 `json:"user_id" binding:"required,gt=0"`
 }
 
 func (h *OnboardingHandler) BindAccount(c *gin.Context) {
@@ -198,7 +193,7 @@ func (h *OnboardingHandler) BindAccount(c *gin.Context) {
 		response.BadRequest(c, "请求格式无效："+err.Error())
 		return
 	}
-	if err := h.service.BindExistingAccount(c.Request.Context(), req.UserID, accountID, req.PublicFallback); err != nil {
+	if err := h.service.BindExistingAccount(c.Request.Context(), req.UserID, accountID); err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -216,4 +211,71 @@ func (h *OnboardingHandler) UnbindAccount(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *OnboardingHandler) SetOwnedAccountPaused(c *gin.Context) {
+	subject, ok := onboardingSubject(c)
+	if !ok {
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "账号无效")
+		return
+	}
+	var req struct {
+		Paused *bool `json:"paused" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请选择暂停或恢复账号")
+		return
+	}
+	if err := h.service.SetOwnedAccountPaused(c.Request.Context(), subject.UserID, accountID, *req.Paused); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *OnboardingHandler) DeleteOwnedAccount(c *gin.Context) {
+	subject, ok := onboardingSubject(c)
+	if !ok {
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "账号无效")
+		return
+	}
+	if err := h.service.DeleteOwnedAccount(c.Request.Context(), subject.UserID, accountID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *OnboardingHandler) ListDiscordMembers(c *gin.Context) {
+	members, err := h.service.ListDiscordMembers(c.Request.Context(), c.Query("search"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, members)
+}
+
+func (h *OnboardingHandler) BindDiscordMember(c *gin.Context) {
+	var req struct {
+		UserID        int64  `json:"user_id" binding:"required,gt=0"`
+		DiscordUserID string `json:"discord_user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请选择用户和 Discord 成员")
+		return
+	}
+	binding, err := h.service.BindDiscordMember(c.Request.Context(), req.UserID, req.DiscordUserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, binding)
 }

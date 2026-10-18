@@ -92,7 +92,7 @@ export default {
 
     pressure5hPage: {
       title: '5 小时限额',
-      description: '根据有效账号池动态保护每位用户的公平份额',
+      description: '根据订阅周额度统计滚动五小时消费，仅在尖峰执行额外限制',
       pressure: '压力',
       effectiveAccounts: '有效账号',
       activeUsers: '近 15 分钟活跃用户',
@@ -117,14 +117,9 @@ export default {
       disabled: '五小时尖峰保护已停用。',
       refresh: '刷新',
       policy: '策略',
-      multiplier: '倍率',
       exempt: '豁免',
       resetUsage: '重置用量',
-      apply: '应用倍率',
-      applyConfirm: '确认将用户 #{user} 的倍率从 {before}x 更改为 {after}x？',
-      exemptConfirm: '确认更改用户 #{user} 的高峰豁免状态？',
       resetConfirm: '确认重置该用户近 5 小时用量？此操作会写入审计记录。',
-      overcommitted: '当前额外保障额度合计为基础池的 {value}%，高峰时可能出现保障额度超配。',
       accountDiagnostics: '有效账号诊断',
       account: '账号',
       rejoin: '预计重新加入',

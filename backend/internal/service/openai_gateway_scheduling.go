@@ -1079,8 +1079,14 @@ func (s *OpenAIGatewayService) selectBestAccount(ctx context.Context, groupID *i
 	if preferLowUpstreamRate {
 		rateOrder = newOpenAILegacyUpstreamRateOrder(eligible, time.Now(), s.openAIOAuthSchedulingRateMultiplier(ctx))
 	}
+	preferredOwnerUserID := preferredOwnerUserIDFromContext(ctx)
 	sort.SliceStable(eligible, func(i, j int) bool {
 		a, b := eligible[i], eligible[j]
+		ownerA := onboardingAccountBelongsToUser(a, preferredOwnerUserID)
+		ownerB := onboardingAccountBelongsToUser(b, preferredOwnerUserID)
+		if ownerA != ownerB {
+			return ownerA
+		}
 		if requireCompact && compactTiers[a.ID] != compactTiers[b.ID] {
 			return compactTiers[a.ID] > compactTiers[b.ID]
 		}
@@ -1174,6 +1180,28 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					MaxWaiting:     cfg.StickySessionMaxWaiting,
 				})
 				return markStickySessionHit(selection, stickyHit), selectErr
+			}
+		}
+		if preferredOwnerUserID > 0 && !stickyHit && s.concurrencyService != nil {
+			attempted := make(map[int64]struct{}, len(excludedIDs)+1)
+			for accountID := range excludedIDs {
+				attempted[accountID] = struct{}{}
+			}
+			attempted[account.ID] = struct{}{}
+			for {
+				candidate, _, selectErr := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, "", requestedModel, attempted, requireCompact, 0, requiredCapability, preferLowUpstreamRate)
+				if selectErr != nil {
+					break
+				}
+				attempted[candidate.ID] = struct{}{}
+				acquired, acquireErr := s.tryAcquireAccountSlot(ctx, candidate.ID, candidate.Concurrency)
+				if acquireErr == nil && acquired != nil && acquired.Acquired {
+					selection, selectErr := s.newAcquiredSelectionResult(ctx, candidate, acquired.ReleaseFunc)
+					if selectErr == nil && sessionHash != "" && !gatewayProfitControlGateActive(ctx) {
+						_ = s.setStickySessionAccountID(ctx, groupID, sessionHash, candidate.ID, openaiStickySessionTTL)
+					}
+					return selection, selectErr
+				}
 			}
 		}
 		selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
@@ -1306,26 +1334,6 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	if len(candidates) == 0 {
 		return nil, noAvailableOpenAISelectionError(requestedModel, false, filterStats.summary(""))
 	}
-	if preferredOwnerUserID > 0 {
-		owned := make([]*Account, 0, len(candidates))
-		public := make([]*Account, 0, len(candidates))
-		for _, account := range candidates {
-			switch {
-			case onboardingAccountBelongsToUser(account, preferredOwnerUserID):
-				owned = append(owned, account)
-			case onboardingAccountIsPublic(account):
-				public = append(public, account)
-			}
-		}
-		if len(owned) > 0 {
-			candidates = owned
-		} else {
-			candidates = public
-		}
-	}
-	if len(candidates) == 0 {
-		return nil, noAvailableOpenAISelectionError(requestedModel, false, filterStats.summary("onboarding_owner_filter"))
-	}
 	rateOrder := openAILegacyUpstreamRateOrder{}
 	if preferLowUpstreamRate {
 		rateOrder = newOpenAILegacyUpstreamRateOrder(candidates, time.Now(), s.openAIOAuthSchedulingRateMultiplier(ctx))
@@ -1403,6 +1411,9 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			selectionOrder = append(selectionOrder, available...)
 		}
 
+		sort.SliceStable(selectionOrder, func(first, second int) bool {
+			return onboardingAccountBelongsToUser(selectionOrder[first].account, preferredOwnerUserID) && !onboardingAccountBelongsToUser(selectionOrder[second].account, preferredOwnerUserID)
+		})
 		for _, item := range selectionOrder {
 			fresh := s.resolveFreshSchedulableOpenAIAccount(ctx, item.account, platform, requestedModel, false, requiredCapability)
 			if fresh == nil {
@@ -1439,6 +1450,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				return rateOrder.compare(ordered[i], ordered[j]) < 0
 			})
 		}
+		owned, public := partitionOnboardingAccounts(ordered, preferredOwnerUserID)
+		ordered = append(owned, public...)
 		if requireCompact {
 			ordered = prioritizeOpenAICompactAccounts(ordered)
 		}

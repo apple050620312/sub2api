@@ -16,7 +16,7 @@ type subscription5hTestRepository struct {
 	err    error
 }
 
-func (r *subscription5hTestRepository) ReadSubscription5hQuota(_ context.Context, userID int64, _ time.Time, _ float64) (Subscription5hQuota, error) {
+func (r *subscription5hTestRepository) ReadSubscription5hQuota(_ context.Context, userID int64, _ time.Time) (Subscription5hQuota, error) {
 	return r.quotas[userID], r.err
 }
 
@@ -30,28 +30,27 @@ func (r *subscription5hTestRepository) ListSubscription5hUserIDs(context.Context
 
 func TestDynamic5hSubscriptionPeakOnlyEnforcement(t *testing.T) {
 	for _, test := range []struct {
-		name       string
-		state      Dynamic5hPressureState
-		usage      float64
-		multiplier float64
-		exempt     bool
-		limited    bool
+		name    string
+		state   Dynamic5hPressureState
+		usage   float64
+		exempt  bool
+		limited bool
 	}{
-		{name: "off peak over allowance", state: Dynamic5hPressureNormal, usage: 60, multiplier: 1},
-		{name: "peak below allowance", state: Dynamic5hPressurePeak, usage: 14.99, multiplier: 1},
-		{name: "peak at allowance", state: Dynamic5hPressurePeak, usage: 15, multiplier: 1, limited: true},
-		{name: "peak over allowance", state: Dynamic5hPressurePeak, usage: 60, multiplier: 1, limited: true},
-		{name: "peak exemption", state: Dynamic5hPressurePeak, usage: 60, multiplier: 1, exempt: true},
-		{name: "peak double allowance", state: Dynamic5hPressurePeak, usage: 20, multiplier: 2},
+		{name: "off peak over allowance", state: Dynamic5hPressureNormal, usage: 60},
+		{name: "peak below allowance", state: Dynamic5hPressurePeak, usage: 14.99},
+		{name: "peak at allowance", state: Dynamic5hPressurePeak, usage: 15, limited: true},
+		{name: "peak over allowance", state: Dynamic5hPressurePeak, usage: 60, limited: true},
+		{name: "peak exemption", state: Dynamic5hPressurePeak, usage: 60, exempt: true},
+		{name: "legacy multiplier cannot increase allowance", state: Dynamic5hPressurePeak, usage: 20, limited: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			svc, ctx := newDynamic5hTestService(t, time.Now().UTC())
 			svc.quotaRepo = &subscription5hTestRepository{quotas: map[int64]Subscription5hQuota{7: {WeeklyLimitUSD: 100, UsageUSD: test.usage}}}
-			svc.policyRepo = &dynamic5hSnapshotRepository{policies: map[int64]Dynamic5hUserPolicy{7: {Multiplier: test.multiplier, Exempt: test.exempt}}}
+			svc.policyRepo = &dynamic5hSnapshotRepository{policies: map[int64]Dynamic5hUserPolicy{7: {Exempt: test.exempt}}}
 			storeDynamic5hTestStatus(svc, ctx, test.state, 0)
 			status, err := svc.subscriptionQuotaUserStatus(ctx, 7)
 			require.NoError(t, err)
-			require.Equal(t, 15*test.multiplier, status.LimitUSD)
+			require.Equal(t, 15.0, status.LimitUSD)
 			require.Equal(t, test.limited, status.CurrentlyLimited)
 			require.Equal(t, test.limited, svc.CheckUser(ctx, 7) != nil)
 		})
@@ -98,7 +97,7 @@ func TestDynamic5hSubscriptionAccountOwnership(t *testing.T) {
 	private := &Account{Extra: map[string]any{onboardingOwnerExtraKey: int64(7)}}
 	public := &Account{Extra: map[string]any{onboardingOwnerExtraKey: int64(8), onboardingPublicFallbackExtraKey: true}}
 	require.True(t, onboardingAccountAllowedForUser(private, 7))
-	require.False(t, onboardingAccountAllowedForUser(private, 8))
+	require.True(t, onboardingAccountAllowedForUser(private, 8), "all contributed accounts allow public fallback")
 	require.True(t, onboardingAccountAllowedForUser(public, 7))
 	require.True(t, onboardingAccountAllowedForUser(&Account{}, 7))
 	require.False(t, onboardingAccountAllowedForUser(nil, 7))
