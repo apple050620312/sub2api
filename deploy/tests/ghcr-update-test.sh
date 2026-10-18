@@ -34,7 +34,15 @@ case "$1" in
     if [[ "${1:-}" == version ]]; then exit 0; fi
     shift 2
     case "$1" in
-      config) if [[ "${2:-}" == --services ]]; then printf 'sub2api\npostgres\n'; fi ;;
+      config)
+        if [[ "${2:-}" == --services ]]; then
+          printf 'sub2api\n'
+          if [[ "$TEST_MODE" == streamed-services ]]; then
+            for service in {1..4096}; do printf 'sidecar-%s\n' "$service"; done
+          fi
+          printf 'postgres\n'
+        fi
+        ;;
       ps) printf 'app-container\n' ;;
       exec) [[ "$TEST_MODE" != backup-failure ]] && printf 'backup-content\n' ;;
       up)
@@ -49,7 +57,7 @@ esac
 SH
 chmod +x "$test_dir/bin/docker"
 
-for mode in success pull-failure backup-failure up-failure unhealthy no-health cleanup-failure; do
+for mode in success streamed-services pull-failure backup-failure up-failure unhealthy no-health cleanup-failure; do
   export TEST_MODE="$mode"
   deployment="$test_dir/$mode"
   mkdir -p "$deployment"
@@ -64,7 +72,7 @@ YAML
   result=0
   (cd "$deployment" && bash "$root/deploy/update-ghcr.sh") > "$test_dir/output" 2>&1 || result=$?
   case "$mode" in
-    success|cleanup-failure)
+    success|streamed-services|cleanup-failure)
       [[ "$result" == 0 && "$(cat "$test_dir/up-count")" == 1 ]] || { cat "$test_dir/output"; exit 1; }
       grep -q "image: ghcr.io/example/sub2api@$TEST_DIGEST" "$deployment/docker-compose.yml"
       ;;

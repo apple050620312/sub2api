@@ -39,8 +39,9 @@ if [[ -n "$GHCR_TOKEN" ]]; then
 fi
 
 compose=(docker compose -f "$COMPOSE_FILE")
-"${compose[@]}" config --services | grep -qx sub2api || die "the Compose project has no sub2api service"
-"${compose[@]}" config --services | grep -qx postgres || die "the Compose project has no postgres service"
+services=$("${compose[@]}" config --services) || die "the Compose configuration could not be read"
+grep -qx sub2api <<< "$services" || die "the Compose project has no sub2api service"
+grep -qx postgres <<< "$services" || die "the Compose project has no postgres service"
 
 old_container=$("${compose[@]}" ps -q sub2api)
 [[ -n "$old_container" ]] || die "the sub2api container was not found"
