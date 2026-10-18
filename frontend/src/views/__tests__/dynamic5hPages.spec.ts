@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 
 const { getUserStatus, getAdminOverview, setPolicy } = vi.hoisted(() => ({
   getUserStatus: vi.fn(),
@@ -28,6 +29,7 @@ import AdminDynamic5hPressureView from '@/views/admin/Dynamic5hPressureView.vue'
 const global = {
   stubs: {
     AppLayout: { template: '<div><slot /></div>' },
+    OnboardingView: true,
     Icon: true,
     LoadingSpinner: true,
   },
@@ -37,6 +39,7 @@ describe('dedicated Dynamic 5h pages', () => {
   it('shows a user’s uncapped usage and zero remaining capacity', async () => {
     getUserStatus.mockResolvedValueOnce({
       enabled: true,
+      quota_available: true,
       state: 'peak',
       limit_active: true,
       currently_limited: true,

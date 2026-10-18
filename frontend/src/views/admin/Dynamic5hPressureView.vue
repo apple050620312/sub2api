@@ -3,14 +3,18 @@
     <div class="space-y-8">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.title') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.pressure5hPage.description') }}</p>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('dynamic5h.adminWorkspaceTitle') }}</h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('dynamic5h.workspaceDescription') }}</p>
         </div>
         <button class="btn-secondary inline-flex h-9 w-9 items-center justify-center" :disabled="loading" :title="t('admin.pressure5hPage.refresh')" @click="load">
           <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
         </button>
       </header>
-
+      <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('dynamic5h.adminWorkspaceTitle')">
+        <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn-primary' : 'btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
+        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn-primary' : 'btn-secondary'" @click="tab = 'setup'">{{ t('dynamic5h.setupTitle') }}</button>
+      </div>
+      <div v-show="tab === 'usage'" class="space-y-8" role="tabpanel">
       <div v-if="loading && !overview" class="flex justify-center py-16"><LoadingSpinner /></div>
       <div v-else-if="overview" class="space-y-8">
         <div v-if="!overview.pool.enabled" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('admin.pressure5hPage.disabled') }}</div>
@@ -29,12 +33,11 @@
             <div class="border-b border-gray-200 px-6 py-5 dark:border-dark-700">
               <h2 class="font-semibold text-gray-900 dark:text-white">{{ t('admin.pressure5hPage.users') }}</h2>
             </div>
-            <div v-if="!overview.pool.calibration_ready" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.unavailable') }} ({{ overview.pool.calibration_samples || 0 }} / 3)</div>
-            <div v-else-if="overview.users.length === 0" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
+            <div v-if="overview.users.length === 0" class="p-7 text-sm text-gray-500">{{ t('admin.pressure5hPage.noUsers') }}</div>
             <div v-else class="divide-y divide-gray-100 dark:divide-dark-700">
               <div v-for="user in overview.users" :key="user.user_id" class="grid gap-6 px-6 py-9 lg:grid-cols-[minmax(250px,1.2fr)_minmax(180px,1.3fr)_100px_170px_minmax(250px,auto)] lg:items-center">
                 <div class="min-w-0"><div class="flex flex-nowrap items-center gap-2"><p class="truncate font-medium text-gray-900 dark:text-white">{{ user.email || '用户' }}</p><span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-medium" :class="user.active ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400'">{{ t(`admin.pressure5hPage.${user.active ? 'active' : 'inactive'}`) }}</span></div></div>
-                <Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" />
+                <div><Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="user.usage_percent" /><p class="mt-2 text-xs text-gray-500">{{ money(user.usage_usd) }} / {{ money(user.limit_usd) }}</p></div>
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.remaining') }}</p><p class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ user.remaining_percent.toFixed(1) }}%</p></div>
                 <div><p class="text-xs text-gray-400">{{ t('admin.pressure5hPage.recover') }}</p><p class="text-sm text-gray-700 dark:text-gray-200">{{ formatTime(user.recover_at) }}</p></div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -58,6 +61,8 @@
           </details>
         </div>
       </div>
+      </div>
+      <div v-show="tab === 'setup'" role="tabpanel"><OnboardingView /></div>
     </div>
   </AppLayout>
 </template>
@@ -69,10 +74,13 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import OnboardingView from '@/views/admin/OnboardingView.vue'
 import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolicy } from '@/api/admin/dashboard'
 import type { Dynamic5hAdminOverview, Dynamic5hAdminUserStatus } from '@/types'
 
 const { t } = useI18n()
+const tab = ref<'usage' | 'setup'>('usage')
+const money = (value = 0) => `$${value.toFixed(2)}`
 const overview = ref<Dynamic5hAdminOverview | null>(null)
 const loading = ref(false)
 const policyMultipliers = ref<Record<number, string | number>>({})
@@ -83,7 +91,7 @@ const metrics = computed(() => overview.value ? [
   { label: t('admin.pressure5hPage.pressure'), value: `${(overview.value.pool.pressure * 100).toFixed(1)}% (${t(`admin.pressure5hPage.states.${overview.value.pool.state}`)})` },
   { label: t('admin.pressure5hPage.effectiveAccounts'), value: overview.value.pool.account_count },
   { label: t('admin.pressure5hPage.activeUsers'), value: overview.value.pool.active_user_count },
-  { label: t('admin.pressure5hPage.enforcement'), value: t(`admin.pressure5hPage.${overview.value.pool.peak_active && overview.value.pool.calibration_ready ? 'on' : 'off'}`) },
+  { label: t('admin.pressure5hPage.enforcement'), value: t(`admin.pressure5hPage.${overview.value.pool.peak_active && overview.value.pool.data_available && !overview.value.pool.stale ? 'on' : 'off'}`) },
   { label: t('admin.pressure5hPage.recoveringNextHour'), value: overview.value.pool.capacity_recovering_next_hour.toFixed(2) },
   { label: t('admin.pressure5hPage.excludedAccounts'), value: overview.value.pool.excluded_account_count },
   { label: t('admin.pressure5hPage.nextReset'), value: formatTime(overview.value.pool.next_reset_at) },

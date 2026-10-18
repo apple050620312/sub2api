@@ -543,7 +543,7 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		clearBinding()
 		return nil, false, nil
 	}
-	if req.PreferredOwnerUserID > 0 && !onboardingAccountBelongsToUser(account, req.PreferredOwnerUserID) {
+	if !onboardingAccountAllowedForUser(account, req.PreferredOwnerUserID) {
 		return nil, false, nil
 	}
 	if !s.isAccountRequestCompatible(ctx, account, req) {
@@ -1300,7 +1300,7 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if err != nil || account == nil {
 			continue
 		}
-		if req.PreferredOwnerUserID > 0 && !onboardingAccountBelongsToUser(account, req.PreferredOwnerUserID) {
+		if !onboardingAccountAllowedForUser(account, req.PreferredOwnerUserID) {
 			continue
 		}
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
@@ -2309,6 +2309,12 @@ func (s *OpenAIGatewayService) selectLegacyAccountByPreviousResponse(
 		return nil, false, nil
 	}
 	account := selection.Account
+	if !onboardingAccountAllowedForUser(account, preferredOwnerUserIDFromContext(ctx)) {
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+		return nil, false, nil
+	}
 	scheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
 	compatible, _ := scheduler.isAccountRequestCompatibleReason(ctx, account, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,

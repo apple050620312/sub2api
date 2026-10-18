@@ -206,7 +206,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/onboarding',
     name: 'Onboarding',
-    component: () => import('@/views/user/OnboardingView.vue'),
+    redirect: to => ({ path: '/service-center', query: { ...to.query, tab: 'setup' }, hash: to.hash }),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
@@ -226,15 +226,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/5h-pressure',
+    path: '/service-center',
+    alias: '/5h-pressure',
     name: 'Dynamic5hPressure',
     component: () => import('@/views/user/Dynamic5hPressureView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
       title: '5h Fair Usage',
-      titleKey: 'dynamic5h.title',
-      descriptionKey: 'dynamic5h.description'
+      titleKey: 'dynamic5h.workspaceTitle',
+      descriptionKey: 'dynamic5h.workspaceDescription'
     }
   },
   {
@@ -439,7 +440,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/admin/onboarding',
     name: 'AdminOnboarding',
-    component: () => import('@/views/admin/OnboardingView.vue'),
+    redirect: to => ({ path: '/admin/service-center', query: to.query, hash: to.hash }),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
@@ -459,15 +460,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/5h-pressure',
+    path: '/admin/service-center',
+    alias: '/admin/5h-pressure',
     name: 'AdminDynamic5hPressure',
     component: () => import('@/views/admin/Dynamic5hPressureView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: '5h Pool Pressure',
-      titleKey: 'admin.pressure5hPage.title',
-      descriptionKey: 'admin.pressure5hPage.description'
+      title: 'Service management',
+      titleKey: 'dynamic5h.adminWorkspaceTitle',
+      descriptionKey: 'dynamic5h.workspaceDescription'
     }
   },
   {

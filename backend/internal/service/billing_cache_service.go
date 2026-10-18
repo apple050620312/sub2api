@@ -133,7 +133,7 @@ type BillingCacheService struct {
 func (s *BillingCacheService) SetDynamic5hPressureService(pressure *Dynamic5hPressureService) {
 	if s != nil {
 		s.dynamic5hPressure = pressure
-		if pressure != nil {
+		if pressure != nil && pressure.quotaRepo == nil {
 			pressure.StartMeterReconciliation()
 		}
 	}

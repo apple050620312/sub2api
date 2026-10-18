@@ -1,6 +1,5 @@
 <template>
-  <AppLayout>
-    <div class="mx-auto w-full max-w-7xl space-y-6">
+    <div class="w-full space-y-8">
       <header class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
         <h1 class="text-2xl font-bold text-gray-900 dark:text-white">新手引导管理</h1>
         <p class="mt-2 text-sm text-gray-600 dark:text-gray-300">配置 Discord 授权、OpenAI OAuth、套餐换算和 CC Switch 下载地址。</p>
@@ -62,15 +61,14 @@
         </div>
       </section>
     </div>
-  </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import AppLayout from '@/components/layout/AppLayout.vue'
 import { onboardingAPI } from '@/api/admin/onboarding'
 import type { OnboardingAdminOverview } from '@/api/admin/onboardingTypes'
 import type { OnboardingConfig } from '@/api/user'
+
 
 const planNames = ['plus', 'pro', 'business_premium', 'business_standard'] as const
 type PlanName = (typeof planNames)[number]

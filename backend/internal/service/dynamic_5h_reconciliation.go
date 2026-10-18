@@ -168,7 +168,7 @@ func (s *Dynamic5hPressureService) ReconcileMeters(ctx context.Context, replay b
 }
 
 func (s *BillingCacheService) HasDurableDynamic5hMetering() bool {
-	if s == nil || s.dynamic5hPressure == nil {
+	if s == nil || s.dynamic5hPressure == nil || s.dynamic5hPressure.quotaRepo != nil {
 		return false
 	}
 	_, ok := s.dynamic5hPressure.policyRepo.(Dynamic5hMeterRepository)

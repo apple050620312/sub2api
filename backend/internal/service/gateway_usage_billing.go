@@ -365,6 +365,9 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	p.MeterUnits = dynamic5hPriceMeter(p.Cost, usageLog)
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
+	if cmd != nil && deps.billingCacheService != nil && deps.billingCacheService.dynamic5hPressure != nil && deps.billingCacheService.dynamic5hPressure.quotaRepo != nil {
+		cmd.Dynamic5hMeterUnits = 0
+	}
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
 		if p.SimpleModeKeyRateLimitOnly {
 			return false, ErrSimpleModeKeyRateLimitBillingUnavailable

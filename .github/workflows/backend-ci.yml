@@ -16,6 +16,8 @@ jobs:
         run: |
           /bin/bash -n deploy/apple-container.sh
           /bin/bash deploy/tests/dynamic-5h-release-test.sh
+          /bin/bash -n deploy/update-ghcr.sh
+          /bin/bash deploy/tests/ghcr-update-test.sh
           /bin/bash deploy/tests/apple-container-test.sh
           /bin/sh deploy/tests/docker-compose-security-test.sh
           /bin/sh deploy/tests/docker-compose-gateway-env-test.sh

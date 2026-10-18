@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -57,8 +58,8 @@ type OnboardingSubscriptionRule struct {
 // OnboardingConfig contains all public onboarding configuration.
 type OnboardingConfig struct {
 	Enabled               bool                                  `json:"enabled"`
-	Discord               OnboardingDiscordConfig                `json:"discord"`
-	PlanUnits             map[string]int                         `json:"plan_units"`
+	Discord               OnboardingDiscordConfig               `json:"discord"`
+	PlanUnits             map[string]int                        `json:"plan_units"`
 	SubscriptionRules     map[string]OnboardingSubscriptionRule `json:"subscription_rules"`
 	OpenAIRedirectURI     string                                `json:"openai_redirect_uri"`
 	CCSwitchDownloadURL   string                                `json:"ccswitch_download_url"`
@@ -93,7 +94,7 @@ type OnboardingAccountSummary struct {
 }
 
 type OnboardingUserOverview struct {
-	Discord         *OnboardingDiscordBinding `json:"discord,omitempty"`
+	Discord         *OnboardingDiscordBinding  `json:"discord,omitempty"`
 	DiscordRequired bool                       `json:"discord_required"`
 	Accounts        []OnboardingAccountSummary `json:"accounts"`
 	AccountUnits    int                        `json:"account_units"`
@@ -114,8 +115,8 @@ type OnboardingAdminUser struct {
 }
 
 type OnboardingAdminOverview struct {
-	Config             OnboardingConfig          `json:"config"`
-	Users              []OnboardingAdminUser    `json:"users"`
+	Config             OnboardingConfig           `json:"config"`
+	Users              []OnboardingAdminUser      `json:"users"`
 	UnassignedAccounts []OnboardingAccountSummary `json:"unassigned_accounts"`
 }
 
@@ -142,8 +143,8 @@ func NewOnboardingService(db *dbent.Client, admin AdminService, oauth *OpenAIOAu
 
 func defaultOnboardingConfig() OnboardingConfig {
 	return OnboardingConfig{
-		Enabled: true,
-		PlanUnits: map[string]int{"plus": 1, "pro": 5, "business_premium": 5, "business_standard": 1},
+		Enabled:           true,
+		PlanUnits:         map[string]int{"plus": 1, "pro": 5, "business_premium": 5, "business_standard": 1},
 		SubscriptionRules: map[string]OnboardingSubscriptionRule{},
 	}
 }
@@ -152,8 +153,19 @@ func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredCo
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("onboarding database is unavailable")
 	}
+	rows, err := s.db.QueryContext(ctx, `SELECT config FROM onboarding_config WHERE id = 1`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return nil, sql.ErrNoRows
+	}
 	var raw []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT config FROM onboarding_config WHERE id = 1`).Scan(&raw); err != nil {
+	if err := rows.Scan(&raw); err != nil {
 		return nil, err
 	}
 	stored := onboardingStoredConfig{OnboardingConfig: defaultOnboardingConfig()}
@@ -246,12 +258,16 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 }
 
 func (s *OnboardingService) getBinding(ctx context.Context, userID int64) (*OnboardingDiscordBinding, error) {
-	row := s.db.QueryRowContext(ctx, `SELECT user_id, discord_user_id, discord_username, guild_id, role_id, status, last_checked_at, created_at, updated_at FROM onboarding_discord_bindings WHERE user_id = $1`, userID)
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id, discord_user_id, discord_username, guild_id, role_id, status, last_checked_at, created_at, updated_at FROM onboarding_discord_bindings WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
 	var binding OnboardingDiscordBinding
-	if err := row.Scan(&binding.UserID, &binding.DiscordUserID, &binding.DiscordUsername, &binding.GuildID, &binding.RoleID, &binding.Status, &binding.LastCheckedAt, &binding.CreatedAt, &binding.UpdatedAt); err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "no rows") {
-			return nil, nil
-		}
+	if err := rows.Scan(&binding.UserID, &binding.DiscordUserID, &binding.DiscordUsername, &binding.GuildID, &binding.RoleID, &binding.Status, &binding.LastCheckedAt, &binding.CreatedAt, &binding.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &binding, nil
@@ -338,6 +354,13 @@ func onboardingAccountIsPublic(account *Account) bool {
 
 func onboardingAccountBelongsToUser(account *Account, userID int64) bool {
 	return account != nil && userID > 0 && onboardingAccountOwnerUserID(account) == userID
+}
+
+func onboardingAccountAllowedForUser(account *Account, userID int64) bool {
+	if userID <= 0 {
+		return true
+	}
+	return onboardingAccountBelongsToUser(account, userID) || onboardingAccountIsPublic(account)
 }
 
 func normalizeOnboardingPlan(value string) string {
@@ -524,7 +547,9 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 	if err != nil {
 		return nil, err
 	}
-	var token struct{ AccessToken string `json:"access_token"` }
+	var token struct {
+		AccessToken string `json:"access_token"`
+	}
 	if err := decodeJSONResponse(resp, &token); err != nil {
 		return nil, err
 	}

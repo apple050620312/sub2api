@@ -80,20 +80,25 @@ type Dynamic5hUserStatus struct {
 	Exempt           bool                   `json:"exempt"`
 	WarningLevel     string                 `json:"warning_level"`
 	PendingPercent   float64                `json:"pending_percent"`
+	QuotaAvailable   bool                   `json:"quota_available"`
+	SevenDayLimitUSD float64                `json:"seven_day_limit_usd"`
+	LimitUSD         float64                `json:"limit_usd"`
+	UsageUSD         float64                `json:"usage_usd"`
+	RemainingUSD     float64                `json:"remaining_usd"`
+	LastUsedAt       *time.Time             `json:"-"`
 	Pool             *Dynamic5hPublicPool   `json:"pool,omitempty"`
 }
 
 type Dynamic5hPublicPool struct {
-	CalibrationReady     bool                         `json:"calibration_ready"`
-	CalibrationSamples   int                          `json:"calibration_samples"`
-	Pressure             float64                      `json:"pressure"`
-	AccountCount         int                          `json:"account_count"`
-	ExcludedAccountCount int                          `json:"excluded_account_count"`
-	ActiveUserCount      int64                        `json:"active_user_count"`
-	Stale                bool                         `json:"stale"`
-	EvaluatedAt          time.Time                    `json:"evaluated_at"`
-	NextResetAt          *time.Time                   `json:"next_reset_at,omitempty"`
-	Accounts             []Dynamic5hAccountDiagnostic `json:"accounts"`
+	CalibrationReady    bool       `json:"calibration_ready"`
+	CalibrationSamples  int        `json:"calibration_samples"`
+	FiveHourUsedPercent *float64   `json:"five_hour_used_percent,omitempty"`
+	FiveHourSampleCount int        `json:"five_hour_sample_count"`
+	SevenDayUsedPercent *float64   `json:"seven_day_used_percent,omitempty"`
+	SevenDaySampleCount int        `json:"seven_day_sample_count"`
+	Stale               bool       `json:"stale"`
+	EvaluatedAt         time.Time  `json:"evaluated_at"`
+	NextResetAt         *time.Time `json:"next_reset_at,omitempty"`
 }
 
 type Dynamic5hAdminUserStatus struct {
@@ -186,6 +191,7 @@ type Dynamic5hPressureService struct {
 	accountRepo AccountRepository
 	userRepo    UserRepository
 	policyRepo  Dynamic5hPolicyRepository
+	quotaRepo   Subscription5hQuotaRepository
 	cache       Dynamic5hPressureCache
 	cfg         config.Dynamic5hPressureConfig
 
@@ -222,6 +228,7 @@ func NewDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hP
 func ProvideDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hPressureCache, cfg *config.Config, userRepo UserRepository, policyRepo Dynamic5hPolicyRepository) *Dynamic5hPressureService {
 	svc := NewDynamic5hPressureService(accountRepo, cache, cfg, userRepo)
 	svc.policyRepo = policyRepo
+	svc.quotaRepo, _ = policyRepo.(Subscription5hQuotaRepository)
 	return svc
 }
 
@@ -321,7 +328,10 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 	}
 	activeUserIDs := s.activeUserIDs(ctx, now)
 	activeUsers := int64(len(activeUserIDs))
-	baseline, samples := s.plusBaseline(ctx, accounts, now)
+	baseline, samples := 1.0, 0
+	if s.quotaRepo == nil {
+		baseline, samples = s.plusBaseline(ctx, accounts, now)
+	}
 	poolMeterUnits := float64(len(windows)) * baseline
 	status := Dynamic5hPressureStatus{
 		Enabled: true, DataAvailable: len(windows) > 0, CalibrationReady: poolMeterUnits > 0,
@@ -497,28 +507,73 @@ func (s *Dynamic5hPressureService) UserStatus(ctx context.Context, userID int64)
 }
 
 func (s *Dynamic5hPressureService) PublicUserStatus(ctx context.Context, userID int64) (Dynamic5hUserStatus, error) {
+	if s != nil && s.quotaRepo != nil {
+		result, err := s.subscriptionQuotaUserStatus(ctx, userID)
+		if err != nil {
+			return result, err
+		}
+		pressure := s.AdminStatus(ctx, false)
+		result.Pool = &Dynamic5hPublicPool{Stale: pressure.Stale, EvaluatedAt: pressure.EvaluatedAt, NextResetAt: pressure.NextResetAt}
+		if s.accountRepo != nil {
+			accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, "")
+			if err != nil {
+				return result, err
+			}
+			result.Pool.FiveHourUsedPercent, result.Pool.FiveHourSampleCount, result.Pool.SevenDayUsedPercent, result.Pool.SevenDaySampleCount = dynamic5hPublicPoolUsage(accounts, s.now().UTC())
+		}
+		return result, nil
+	}
 	status := s.AdminStatus(ctx, false)
 	result := s.userStatus(ctx, userID, status, s.now().UTC())
-	pool := &Dynamic5hPublicPool{Pressure: status.Pressure, AccountCount: status.AccountCount, ExcludedAccountCount: status.ExcludedAccountCount, ActiveUserCount: status.ActiveUserCount, Stale: status.Stale, EvaluatedAt: status.EvaluatedAt, NextResetAt: status.NextResetAt, Accounts: []Dynamic5hAccountDiagnostic{}}
+	pool := &Dynamic5hPublicPool{Stale: status.Stale, EvaluatedAt: status.EvaluatedAt, NextResetAt: status.NextResetAt}
 	pool.CalibrationReady, pool.CalibrationSamples = status.CalibrationReady, status.CalibrationSamples
 	if s.accountRepo != nil {
 		accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, "")
 		if err != nil {
 			return result, err
 		}
-		for index := range accounts {
-			diagnostic := dynamic5hAccountDiagnostic(&accounts[index], s.now().UTC())
-			if strings.ContainsAny(diagnostic.Name, "@＠") {
-				diagnostic.Name = fmt.Sprintf("账号 #%d", diagnostic.AccountID)
-			}
-			pool.Accounts = append(pool.Accounts, diagnostic)
-		}
+		pool.FiveHourUsedPercent, pool.FiveHourSampleCount, pool.SevenDayUsedPercent, pool.SevenDaySampleCount = dynamic5hPublicPoolUsage(accounts, s.now().UTC())
 	}
 	result.Pool = pool
 	return result, nil
 }
 
+func dynamic5hPublicPoolUsage(accounts []Account, now time.Time) (fiveHour *float64, fiveHourCount int, sevenDay *float64, sevenDayCount int) {
+	var fiveHourTotal, sevenDayTotal float64
+	for index := range accounts {
+		account := &accounts[index]
+		if !account.IsActive() || !account.Schedulable {
+			continue
+		}
+		if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+			continue
+		}
+		diagnostic := dynamic5hAccountDiagnostic(account, now)
+		if diagnostic.FiveHourUsed != nil {
+			fiveHourTotal += math.Max(0, math.Min(100, *diagnostic.FiveHourUsed))
+			fiveHourCount++
+		}
+		if diagnostic.SevenDayUsed != nil {
+			sevenDayTotal += math.Max(0, math.Min(100, *diagnostic.SevenDayUsed))
+			sevenDayCount++
+		}
+	}
+	if fiveHourCount > 0 {
+		value := fiveHourTotal / float64(fiveHourCount)
+		fiveHour = &value
+	}
+	if sevenDayCount > 0 {
+		value := sevenDayTotal / float64(sevenDayCount)
+		sevenDay = &value
+	}
+	return fiveHour, fiveHourCount, sevenDay, sevenDayCount
+}
+
 func (s *Dynamic5hPressureService) userStatus(ctx context.Context, userID int64, status Dynamic5hPressureStatus, now time.Time) Dynamic5hUserStatus {
+	if s.quotaRepo != nil {
+		result, _ := s.subscriptionQuotaUserStatus(ctx, userID)
+		return result
+	}
 	result := Dynamic5hUserStatus{Enabled: status.Enabled, State: status.State}
 	if !status.CalibrationReady || userID <= 0 || s.cache == nil {
 		return result
@@ -561,6 +616,9 @@ func (s *Dynamic5hPressureService) userStatusWithFairShare(ctx context.Context, 
 }
 
 func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hAdminOverview {
+	if s != nil && s.quotaRepo != nil {
+		return s.subscriptionQuotaAdminOverview(ctx)
+	}
 	status := s.AdminStatus(ctx, true)
 	overview := Dynamic5hAdminOverview{Pool: status, Users: []Dynamic5hAdminUserStatus{}, Accounts: []Dynamic5hAccountDiagnostic{}, AuditLogs: []Dynamic5hAuditLog{}, Metrics: s.Metrics()}
 	if s.accountRepo != nil {
@@ -717,6 +775,9 @@ func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagn
 }
 
 func (s *Dynamic5hPressureService) CheckUser(ctx context.Context, userID int64, platform ...string) error {
+	if s != nil && s.quotaRepo != nil {
+		return s.checkSubscriptionQuota(ctx, userID)
+	}
 	if len(platform) > 0 && platform[0] != "" && !dynamic5hPlatformSupported(platform[0]) {
 		return nil
 	}
@@ -852,6 +913,9 @@ func (s *Dynamic5hPressureService) SetUserPolicy(ctx context.Context, userID int
 }
 
 func (s *Dynamic5hPressureService) ResetUserUsage(ctx context.Context, userID int64, actorAndReason ...any) error {
+	if s.quotaRepo != nil {
+		return s.resetSubscriptionQuota(ctx, userID, actorAndReason...)
+	}
 	c, ok := s.cache.(Dynamic5hPolicyCache)
 	if !ok {
 		return fmt.Errorf("dynamic 5h policy cache unavailable")
@@ -877,6 +941,9 @@ func (s *Dynamic5hPressureService) ResetUserUsage(ctx context.Context, userID in
 // RecordUsage maintains calibration, active population, and each user's rolling
 // usage in every state. Normal usage must remain visible if the pool enters Peak.
 func (s *Dynamic5hPressureService) RecordUsage(ctx context.Context, userID int64, platform string, meterUnits float64) {
+	if s != nil && s.quotaRepo != nil {
+		return
+	}
 	if s == nil || s.cache == nil || userID <= 0 || meterUnits <= 0 || !dynamic5hPlatformSupported(platform) {
 		return
 	}

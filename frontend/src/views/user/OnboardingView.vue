@@ -1,6 +1,5 @@
 <template>
-  <AppLayout>
-    <div class="mx-auto w-full max-w-7xl space-y-6">
+    <div class="w-full space-y-8">
       <header class="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-dark-700 dark:bg-dark-800">
         <p class="text-sm font-semibold text-primary-600 dark:text-primary-400">新用户引导</p>
         <h1 class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">从绑定 Discord 到开始使用 Codex</h1>
@@ -57,8 +56,10 @@
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">使用这个 Key 连接 CC Switch。完整 Key 只会在创建成功后显示一次。</p>
           <div class="mt-4 flex flex-wrap gap-3">
             <input v-model="keyName" class="form-input w-full sm:w-72" placeholder="例如：我的 Codex" />
-            <button class="btn btn-primary" :disabled="busy || !overview?.ready_for_key || !keyName.trim()" @click="createKey">创建 API Key</button>
+            <select v-model="keyGroupID" class="form-input w-full sm:w-64" aria-label="API Key 订阅分组"><option v-for="group in keyGroups" :key="group.id" :value="group.id">{{ group.name }}</option></select>
+            <button class="btn btn-primary" :disabled="busy || !overview?.ready_for_key || !keyName.trim() || !keyGroupID" @click="createKey">创建 API Key</button>
           </div>
+          <p v-if="overview?.ready_for_key && !keyGroups.length" class="mt-3 text-sm text-amber-600">暂无可用的 OpenAI 分组，请联系管理员配置订阅分配。</p>
           <div v-if="createdKey" class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-900/20">
             <p class="text-sm font-semibold text-emerald-800 dark:text-emerald-200">请立即复制并保存：</p>
             <code class="mt-2 block break-all text-sm text-emerald-900 dark:text-emerald-100">{{ createdKey }}</code>
@@ -81,13 +82,11 @@
         </section>
       </template>
     </div>
-  </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import AppLayout from '@/components/layout/AppLayout.vue'
 import { buildGatewayUrl } from '@/api/client'
 import {
   completeDiscordOnboarding,
@@ -99,6 +98,8 @@ import {
   type OnboardingUserOverview,
 } from '@/api/user'
 import { keysAPI } from '@/api/keys'
+import { userGroupsAPI } from '@/api/groups'
+import type { Group } from '@/types'
 import { buildCcSwitchImportDeeplink, CC_SWITCH_USAGE_SCRIPT } from '@/utils/ccswitchImport'
 
 const route = useRoute()
@@ -110,6 +111,8 @@ const oauthStart = ref<OnboardingOAuthStart | null>(null)
 const oauthSessionID = ref('')
 const callbackURL = ref('')
 const keyName = ref('我的 Codex')
+const keyGroups = ref<Group[]>([])
+const keyGroupID = ref<number>()
 const createdKey = ref('')
 
 const redirectURI = computed(() => `${window.location.origin}/onboarding`)
@@ -134,6 +137,10 @@ async function load() {
   loading.value = true
   try {
     overview.value = await getOnboardingOverview()
+    keyGroups.value = (await userGroupsAPI.getAvailable()).filter(group => group.platform === 'openai' && group.status === 'active')
+    if (!keyGroups.value.some(group => group.id === keyGroupID.value)) {
+      keyGroupID.value = (keyGroups.value.find(group => group.subscription_type === 'subscription') || keyGroups.value[0])?.id
+    }
   } finally {
     loading.value = false
   }
@@ -156,7 +163,7 @@ async function completeDiscord() {
   busy.value = true
   try {
     await completeDiscordOnboarding({ code, state, redirect_uri: redirectURI.value })
-    await router.replace('/onboarding')
+    await router.replace('/service-center')
     await load()
   } finally {
     busy.value = false
@@ -193,9 +200,10 @@ async function completeOpenAI() {
 }
 
 async function createKey() {
+  if (!keyGroupID.value || !overview.value?.ready_for_key || busy.value) return
   busy.value = true
   try {
-    const key = await keysAPI.create(keyName.value.trim())
+    const key = await keysAPI.create(keyName.value.trim(), keyGroupID.value)
     createdKey.value = key.key
     await load()
   } finally {

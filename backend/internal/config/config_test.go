@@ -38,6 +38,8 @@ func TestLoadDynamic5hPressureDefaults(t *testing.T) {
 	require.True(t, cfg.Gateway.Dynamic5hPressure.Enabled)
 	require.Equal(t, 1.0, cfg.Gateway.Dynamic5hPressure.PeakThreshold)
 	require.Equal(t, 0.9, cfg.Gateway.Dynamic5hPressure.NormalThreshold)
+}
+
 func TestLoadDefaultMinOutputTokens(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()

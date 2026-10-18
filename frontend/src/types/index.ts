@@ -1986,6 +1986,7 @@ export interface DashboardStats {
 }
 
 export interface Dynamic5hPressureStatus {
+  stale: boolean
   calibration_samples?: number
   enabled: boolean
   data_available: boolean
@@ -2009,17 +2010,21 @@ export interface Dynamic5hPressureStatus {
 }
 
 export interface Dynamic5hUserStatus {
-	pool?: {
-    calibration_ready?: boolean
-    calibration_samples?: number
-    pressure: number
-    account_count: number
-    excluded_account_count: number
-    active_user_count: number
+  quota_available: boolean
+  seven_day_limit_usd: number
+  limit_usd: number
+  usage_usd: number
+  remaining_usd: number
+  pool?: {
+    calibration_ready: boolean
+    calibration_samples: number
+    five_hour_used_percent?: number
+    five_hour_sample_count: number
+    seven_day_used_percent?: number
+    seven_day_sample_count: number
     stale: boolean
     evaluated_at: string
     next_reset_at?: string
-    accounts: Dynamic5hAdminOverview['accounts']
   }
   enabled: boolean
   state: 'normal' | 'peak'

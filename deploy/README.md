@@ -17,6 +17,7 @@ This directory contains files for deploying Sub2API on Linux servers and Apple-s
 | `docker-compose.yml` | Docker Compose configuration (named volumes) |
 | `docker-compose.local.yml` | Docker Compose configuration (local directories, easy migration) |
 | `docker-deploy.sh` | **One-click Docker deployment script (recommended)** |
+| `update-ghcr.sh` | 从 GHCR 更新镜像，自动备份、健康检查并在失败时回滚 |
 | `apple-container.sh` | Native Apple `container` lifecycle script |
 | `APPLE_CONTAINER.md` | Apple `container` deployment and operations guide |
 | `.env.example` | Container environment variables template |
@@ -49,6 +50,27 @@ See [APPLE_CONTAINER.md](./APPLE_CONTAINER.md) for configuration, upgrades, pers
 ---
 
 ## Docker Deployment (Recommended)
+
+### Update from GHCR
+
+在部署目录执行以下命令即可更新到 `main` 的 GHCR 镜像。脚本不等待 CI，直接拉取已经发布的镜像；更新失败会恢复原镜像并保留数据库和应用数据备份。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/apple050620312/sub2api/main/deploy/update-ghcr.sh -o update-ghcr.sh
+chmod +x update-ghcr.sh
+./update-ghcr.sh
+```
+
+可以用提交标签或 digest 固定版本：
+
+```bash
+SUB2API_IMAGE=ghcr.io/apple050620312/sub2api:sha-<commit-sha> ./update-ghcr.sh
+SUB2API_IMAGE_DIGEST=sha256:<64位digest> ./update-ghcr.sh
+```
+
+脚本将本次镜像固定到拉取结果的 digest，并保留原镜像的本地回滚标签。默认不清理主机镜像；设置 `PRUNE_DANGLING_IMAGES=true` 可在成功后清理全机 dangling 镜像，清理失败不会回滚健康的服务。旧回滚标签及备份需在确认稳定后自行清理。
+
+备份目录仅当前用户可访问。失败时仅回滚应用镜像和 Compose 配置，不自动还原数据库；新版已执行的数据库迁移可能不兼容旧镜像，必要时需停止服务并人工恢复备份。不要在未确认版本兼容性时直接降级。
 
 ### Method 1: One-Click Deployment (Recommended)
 
