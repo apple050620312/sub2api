@@ -204,6 +204,16 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/onboarding',
+    name: 'Onboarding',
+    component: () => import('@/views/user/OnboardingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: '新手引导'
+    }
+  },
+  {
     path: '/keys',
     name: 'Keys',
     component: () => import('@/views/user/KeysView.vue'),
@@ -424,6 +434,16 @@ const routes: RouteRecordRaw[] = [
       title: 'Admin Dashboard',
       titleKey: 'admin.dashboard.title',
       descriptionKey: 'admin.dashboard.description'
+    }
+  },
+  {
+    path: '/admin/onboarding',
+    name: 'AdminOnboarding',
+    component: () => import('@/views/admin/OnboardingView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: '新手引导管理'
     }
   },
   {

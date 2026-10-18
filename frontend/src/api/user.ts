@@ -20,6 +20,58 @@ import type {
   Dynamic5hUserStatus,
 } from '@/types'
 
+export interface OnboardingAccountSummary {
+  id: number
+  name: string
+  plan_type: string
+  status: string
+  public_fallback: boolean
+  owner_source?: string
+}
+
+export interface OnboardingDiscordBinding {
+  user_id: number
+  discord_user_id: string
+  discord_username: string
+  guild_id: string
+  role_id: string
+  status: string
+  last_checked_at?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface OnboardingDiscordConfig {
+  client_id: string
+  client_secret_configured: boolean
+  bot_token_configured: boolean
+  guild_id: string
+  role_id: string
+  redirect_uri: string
+}
+
+export interface OnboardingConfig {
+  enabled: boolean
+  discord: OnboardingDiscordConfig
+  plan_units: Record<string, number>
+  subscription_rules: Record<string, { group_id: number; validity_days: number; units: number }>
+  openai_redirect_uri: string
+  ccswitch_download_url: string
+  public_fallback_default: boolean
+}
+
+export interface OnboardingUserOverview {
+  discord?: OnboardingDiscordBinding
+  discord_required: boolean
+  accounts: OnboardingAccountSummary[]
+  account_units: number
+  api_key_count: number
+  ready_for_account: boolean
+  ready_for_key: boolean
+  ready_for_ccs: boolean
+  config: OnboardingConfig
+}
+
 /**
  * Get current user profile
  * @returns User profile data
@@ -200,6 +252,44 @@ export async function getDynamic5hPressure(): Promise<Dynamic5hUserStatus> {
   return data
 }
 
+export async function getOnboardingOverview(): Promise<OnboardingUserOverview> {
+  const { data } = await apiClient.get<OnboardingUserOverview>('/user/onboarding')
+  return data
+}
+
+export async function startDiscordOnboarding(redirectUri?: string): Promise<{ auth_url: string }> {
+  const { data } = await apiClient.post<{ auth_url: string }>('/user/onboarding/discord/start', { redirect_uri: redirectUri })
+  return data
+}
+
+export async function completeDiscordOnboarding(payload: { code: string; state: string; redirect_uri?: string }): Promise<OnboardingDiscordBinding> {
+  const { data } = await apiClient.post<OnboardingDiscordBinding>('/user/onboarding/discord/complete', payload)
+  return data
+}
+
+export interface OnboardingOAuthStart {
+  auth_url: string
+  session_id: string
+  onboarding_state: string
+  redirect_uri: string
+}
+
+export async function startOpenAIOnboarding(redirectUri?: string): Promise<OnboardingOAuthStart> {
+  const { data } = await apiClient.post<OnboardingOAuthStart>('/user/onboarding/openai/start', { redirect_uri: redirectUri })
+  return data
+}
+
+export async function completeOpenAIOnboarding(payload: {
+  session_id: string
+  code: string
+  state: string
+  onboarding_state: string
+  redirect_uri?: string
+}): Promise<{ account_id: number; name: string; plan_type: string }> {
+  const { data } = await apiClient.post<{ account_id: number; name: string; plan_type: string }>('/user/onboarding/openai/complete', payload)
+  return data
+}
+
 export const userAPI = {
   getProfile,
   updateProfile,
@@ -217,6 +307,11 @@ export const userAPI = {
   transferAffiliateQuota,
   getMyPlatformQuotas,
   getDynamic5hPressure,
+  getOnboardingOverview,
+  startDiscordOnboarding,
+  completeDiscordOnboarding,
+  startOpenAIOnboarding,
+  completeOpenAIOnboarding,
 }
 
 export default userAPI

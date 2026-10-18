@@ -181,6 +181,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
+	onboardingHandler *OnboardingHandler,
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
 	apiKeyHandler *APIKeyHandler,
@@ -209,7 +210,9 @@ func ProvideHandlers(
 ) *Handlers {
 	userHandler.SetDynamic5hPressureService(dynamic5hPressure)
 	adminHandlers.Dashboard.SetDynamic5hPressureService(dynamic5hPressure)
+	adminHandlers.Onboarding = onboardingHandler
 	return &Handlers{
+		Onboarding: onboardingHandler,
 		Auth:             authHandler,
 		User:             userHandler,
 		APIKey:           apiKeyHandler,
@@ -237,6 +240,7 @@ func ProvideHandlers(
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
+	NewOnboardingHandler,
 	NewAuthHandler,
 	NewUserHandler,
 	NewAPIKeyHandler,

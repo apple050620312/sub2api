@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -69,6 +70,7 @@ var openAIAdvancedSchedulerSettingSF singleflight.Group
 
 type OpenAIAccountScheduleRequest struct {
 	GroupID                 *int64
+	PreferredOwnerUserID    int64
 	Platform                string
 	SessionHash             string
 	StickyAccountID         int64
@@ -92,6 +94,14 @@ type OpenAIAccountScheduleRequest struct {
 	// and compact_model_mapping; native remote compaction v2 leaves it false.
 	RequireCompact bool
 	ExcludedIDs    map[int64]struct{}
+}
+
+func preferredOwnerUserIDFromContext(ctx context.Context) int64 {
+	if ctx == nil {
+		return 0
+	}
+	userID, _ := ctx.Value(ctxkey.UserID).(int64)
+	return userID
 }
 
 type OpenAIAccountScheduleDecision struct {
@@ -410,12 +420,13 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if selection != nil && selection.Account != nil {
 			compatible, _ := s.isAccountRequestCompatibleReason(ctx, selection.Account, req)
+			ownerAllowed := req.PreferredOwnerUserID <= 0 || onboardingAccountBelongsToUser(selection.Account, req.PreferredOwnerUserID)
 			hasGroupMetadata := len(selection.Account.GroupIDs) > 0 || len(selection.Account.AccountGroups) > 0
 			groupCompatible := !hasGroupMetadata || openAIStickyAccountMatchesGroup(selection.Account, req.GroupID)
 			if hasGroupMetadata && s.service != nil {
 				groupCompatible = s.service.openAIAccountMatchesSchedulingGroup(selection.Account, req.GroupID)
 			}
-			if !groupCompatible ||
+			if !ownerAllowed || !groupCompatible ||
 				!compatible || !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
 				if selection.ReleaseFunc != nil {
 					selection.ReleaseFunc()
@@ -530,6 +541,9 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	}
 	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
 		clearBinding()
+		return nil, false, nil
+	}
+	if req.PreferredOwnerUserID > 0 && !onboardingAccountBelongsToUser(account, req.PreferredOwnerUserID) {
 		return nil, false, nil
 	}
 	if !s.isAccountRequestCompatible(ctx, account, req) {
@@ -1286,6 +1300,9 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		if err != nil || account == nil {
 			continue
 		}
+		if req.PreferredOwnerUserID > 0 && !onboardingAccountBelongsToUser(account, req.PreferredOwnerUserID) {
+			continue
+		}
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
 			continue
 		}
@@ -1440,7 +1457,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 
 	filterStats := openAISelectionFilterStats{pool: len(accounts)}
 	filtered := make([]*Account, 0, len(accounts))
-	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
 		if req.ExcludedIDs != nil {
@@ -1477,13 +1493,35 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			continue
 		}
 		filtered = append(filtered, account)
+	}
+	if req.PreferredOwnerUserID > 0 {
+		owned := make([]*Account, 0, len(filtered))
+		public := make([]*Account, 0, len(filtered))
+		for _, account := range filtered {
+			switch {
+			case onboardingAccountBelongsToUser(account, req.PreferredOwnerUserID):
+				owned = append(owned, account)
+			case onboardingAccountIsPublic(account):
+				public = append(public, account)
+			default:
+				filterStats.exclude("owned_by_other_user")
+			}
+		}
+		if len(owned) > 0 {
+			filtered = owned
+		} else {
+			filtered = public
+		}
+	}
+	if len(filtered) == 0 {
+		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
+	}
+	loadReq := make([]AccountWithConcurrency, 0, len(filtered))
+	for _, account := range filtered {
 		loadReq = append(loadReq, AccountWithConcurrency{
 			ID:             account.ID,
 			MaxConcurrency: account.EffectiveLoadFactor(),
 		})
-	}
-	if len(filtered) == 0 {
-		return nil, 0, 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, false, filterStats.summary(""))
 	}
 
 	loadMap := map[int64]*AccountLoadInfo{}
@@ -2347,6 +2385,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 			fallbackScheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
 			selection, _, err := fallbackScheduler.selectBySessionHash(ctx, OpenAIAccountScheduleRequest{
 				GroupID:                 groupID,
+				PreferredOwnerUserID:    preferredOwnerUserIDFromContext(ctx),
 				Platform:                platform,
 				SessionHash:             sessionHash,
 				StickyAccountID:         guardianParentAccountID,
@@ -2450,6 +2489,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,
+		PreferredOwnerUserID:    preferredOwnerUserIDFromContext(ctx),
 		Platform:                platform,
 		SessionHash:             sessionHash,
 		StickyAccountID:         stickyAccountID,

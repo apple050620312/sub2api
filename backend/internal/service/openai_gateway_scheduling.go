@@ -1145,6 +1145,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 
 	cfg := s.schedulingConfig()
+	preferredOwnerUserID := preferredOwnerUserIDFromContext(ctx)
 	preferLowUpstreamRate := useUpstreamTokenCost && s.isOpenAILowUpstreamRatePriorityEnabled(ctx)
 	needsUpstreamCheck := s.needsUpstreamChannelRestrictionCheck(ctx, groupID)
 	var stickyAccountID int64
@@ -1215,7 +1216,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 				if clearSticky {
 					_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 				}
-				if !clearSticky && isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) {
+				if !clearSticky && (preferredOwnerUserID <= 0 || onboardingAccountBelongsToUser(account, preferredOwnerUserID)) && isOpenAICompatibleAccountEligibleForRequest(ctx, account, platform, requestedModel, false, requiredCapability) {
 					account = s.recheckSelectedOpenAIAccountFromDB(ctx, account, groupID, platform, requestedModel, requireCompact, requiredCapability)
 					if account == nil {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
@@ -1304,6 +1305,26 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 
 	if len(candidates) == 0 {
 		return nil, noAvailableOpenAISelectionError(requestedModel, false, filterStats.summary(""))
+	}
+	if preferredOwnerUserID > 0 {
+		owned := make([]*Account, 0, len(candidates))
+		public := make([]*Account, 0, len(candidates))
+		for _, account := range candidates {
+			switch {
+			case onboardingAccountBelongsToUser(account, preferredOwnerUserID):
+				owned = append(owned, account)
+			case onboardingAccountIsPublic(account):
+				public = append(public, account)
+			}
+		}
+		if len(owned) > 0 {
+			candidates = owned
+		} else {
+			candidates = public
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, noAvailableOpenAISelectionError(requestedModel, false, filterStats.summary("onboarding_owner_filter"))
 	}
 	rateOrder := openAILegacyUpstreamRateOrder{}
 	if preferLowUpstreamRate {

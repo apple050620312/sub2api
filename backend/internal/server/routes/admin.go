@@ -51,6 +51,7 @@ func RegisterAdminRoutes(
 
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
+		registerOnboardingRoutes(admin, h)
 
 		// Gemini OAuth
 		registerGeminiOAuthRoutes(admin, h)
@@ -130,6 +131,17 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerOnboardingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	onboarding := admin.Group("/onboarding")
+	{
+		onboarding.GET("", h.Admin.Onboarding.GetAdminOverview)
+		onboarding.GET("/config", h.Admin.Onboarding.GetAdminConfig)
+		onboarding.PUT("/config", h.Admin.Onboarding.UpdateAdminConfig)
+		onboarding.POST("/accounts/:id/bind", h.Admin.Onboarding.BindAccount)
+		onboarding.DELETE("/accounts/:id/bind", h.Admin.Onboarding.UnbindAccount)
 	}
 }
 

@@ -29,6 +29,11 @@ func RegisterUserRoutes(
 		user := authenticated.Group("/user")
 		{
 			user.GET("/profile", h.User.GetProfile)
+			user.GET("/onboarding", h.Onboarding.GetUserOverview)
+			user.POST("/onboarding/discord/start", h.Onboarding.StartDiscord)
+			user.POST("/onboarding/discord/complete", h.Onboarding.CompleteDiscord)
+			user.POST("/onboarding/openai/start", h.Onboarding.StartOpenAI)
+			user.POST("/onboarding/openai/complete", h.Onboarding.CompleteOpenAI)
 			user.PUT("/password", h.User.ChangePassword)
 			user.PUT("", h.User.UpdateProfile)
 			user.GET("/aff", h.User.GetAffiliate)
