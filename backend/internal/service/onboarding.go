@@ -434,10 +434,7 @@ func onboardingAccountOwnerUserID(account *Account) int64 {
 }
 
 func onboardingAccountIsPublic(account *Account) bool {
-	if account == nil {
-		return false
-	}
-	return true
+	return account != nil
 }
 
 func onboardingAccountBelongsToUser(account *Account, userID int64) bool {
@@ -682,7 +679,7 @@ func decodeJSONResponse(resp *http.Response, target any) error {
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("Discord 请求失败（HTTP %d），请检查应用配置、机器人权限和成员列表权限", resp.StatusCode)
+		return fmt.Errorf("请求 Discord 失败（HTTP %d），请检查应用配置、机器人权限和成员列表权限", resp.StatusCode)
 	}
 	if target == nil || len(body) == 0 {
 		return nil
@@ -720,7 +717,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 		return nil, err
 	}
 	if token.AccessToken == "" {
-		return nil, fmt.Errorf("Discord 未返回授权令牌，请重新授权")
+		return nil, fmt.Errorf("未收到 Discord 授权令牌，请重新授权")
 	}
 	userReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://discord.com/api/users/@me", nil)
 	userReq.Header.Set("Authorization", "Bearer "+token.AccessToken)
@@ -736,7 +733,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 		return nil, err
 	}
 	if discordUser.ID == "" {
-		return nil, fmt.Errorf("Discord 未返回用户身份，请重新授权")
+		return nil, fmt.Errorf("未收到 Discord 用户身份，请重新授权")
 	}
 	joinURL := "https://discord.com/api/guilds/" + url.PathEscape(stored.Discord.GuildID) + "/members/" + url.PathEscape(discordUser.ID)
 	joinBody, _ := json.Marshal(map[string]string{"access_token": token.AccessToken})
