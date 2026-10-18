@@ -19,7 +19,7 @@
           <label class="space-y-1 text-sm"><span>服务器 ID</span><input v-model="form.discord.guild_id" class="form-input w-full" /></label>
           <label class="space-y-1 text-sm"><span>身份组 ID</span><input v-model="form.discord.role_id" class="form-input w-full" /></label>
           <label class="space-y-1 text-sm"><span>Discord 回调地址</span><input v-model="form.discord.redirect_uri" class="form-input w-full" placeholder="https://example.com/onboarding" /></label>
-          <label class="space-y-1 text-sm"><span>OpenAI 回调地址</span><input v-model="form.openai_redirect_uri" class="form-input w-full" placeholder="https://example.com/onboarding" /></label>
+          <label class="space-y-1 text-sm"><span>OpenAI 回调地址（留空使用默认流程）</span><input v-model="form.openai_redirect_uri" class="form-input w-full" placeholder="http://localhost:1455/auth/callback" /></label>
           <label class="space-y-1 text-sm md:col-span-2"><span>CC Switch 下载地址</span><input v-model="form.ccswitch_download_url" class="form-input w-full" /></label>
         </div>
       </section>

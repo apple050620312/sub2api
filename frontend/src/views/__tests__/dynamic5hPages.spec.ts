@@ -59,7 +59,7 @@ describe('dedicated Dynamic 5h pages', () => {
     wrapper.unmount()
   })
 
-  it('shows calibration unavailable instead of a misleading zero', async () => {
+  it('shows missing subscription allowance instead of a misleading zero', async () => {
     getUserStatus.mockResolvedValueOnce({
       enabled: true,
       state: 'normal',
@@ -74,6 +74,31 @@ describe('dedicated Dynamic 5h pages', () => {
 
     expect(wrapper.text()).toContain('dynamic5h.unavailable')
     expect(wrapper.find('[role="progressbar"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('allows usage above 100% outside peak and keeps setup in the same page', async () => {
+    getUserStatus.mockResolvedValueOnce({
+      enabled: true,
+      quota_available: true,
+      state: 'normal',
+      currently_limited: false,
+      usage_percent: 140,
+      remaining_percent: 0,
+      usage_usd: 21,
+      limit_usd: 15,
+      seven_day_limit_usd: 100,
+      window_started_at: '2026-09-18T00:00:00Z',
+    })
+    const wrapper = mount(UserDynamic5hPressureView, { global, attachTo: document.body })
+    await flushPromises()
+    expect(wrapper.text()).toContain('dynamic5h.available')
+    expect(wrapper.text()).not.toContain('dynamic5h.limited')
+    expect(wrapper.text()).toContain('$21.00 / $15.00')
+    expect(wrapper.find('onboarding-view-stub').isVisible()).toBe(false)
+    await wrapper.findAll('[role="tab"]')[0]!.trigger('click')
+    expect(wrapper.find('onboarding-view-stub').isVisible()).toBe(true)
+    expect(wrapper.findAll('[role="tab"]')[0]!.attributes('aria-selected')).toBe('true')
     wrapper.unmount()
   })
 

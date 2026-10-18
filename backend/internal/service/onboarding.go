@@ -18,6 +18,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 const (
@@ -157,7 +158,7 @@ func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredCo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return nil, err
@@ -262,7 +263,7 @@ func (s *OnboardingService) getBinding(ctx context.Context, userID int64) (*Onbo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		return nil, rows.Err()
 	}
@@ -278,7 +279,7 @@ func (s *OnboardingService) listBindings(ctx context.Context) ([]OnboardingDisco
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	bindings := make([]OnboardingDiscordBinding, 0)
 	for rows.Next() {
 		var binding OnboardingDiscordBinding
@@ -510,7 +511,7 @@ func (s *OnboardingService) StartDiscord(ctx context.Context, userID int64, redi
 }
 
 func decodeJSONResponse(resp *http.Response, target any) error {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return err
@@ -554,7 +555,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 		return nil, err
 	}
 	if token.AccessToken == "" {
-		return nil, fmt.Errorf("Discord returned no access token")
+		return nil, fmt.Errorf("discord returned no access token")
 	}
 	userReq, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://discord.com/api/users/@me", nil)
 	userReq.Header.Set("Authorization", "Bearer "+token.AccessToken)
@@ -570,7 +571,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 		return nil, err
 	}
 	if discordUser.ID == "" {
-		return nil, fmt.Errorf("Discord returned no user id")
+		return nil, fmt.Errorf("discord returned no user id")
 	}
 	joinURL := "https://discord.com/api/guilds/" + url.PathEscape(stored.Discord.GuildID) + "/members/" + url.PathEscape(discordUser.ID)
 	joinBody, _ := json.Marshal(map[string]string{"access_token": token.AccessToken})
@@ -602,15 +603,15 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 	return s.getBinding(ctx, userID)
 }
 
-func (s *OnboardingService) StartOpenAI(ctx context.Context, userID int64, redirectURI string) (*OnboardingOAuthStart, error) {
+func (s *OnboardingService) StartOpenAI(ctx context.Context, userID int64, _ string) (*OnboardingOAuthStart, error) {
 	stored, err := s.requireDiscord(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(stored.OpenAIRedirectURI) == "" {
-		return nil, infraerrors.BadRequest("OPENAI_REDIRECT_URI_REQUIRED", "请先配置 OpenAI 回调地址")
+	redirectURI := strings.TrimSpace(stored.OpenAIRedirectURI)
+	if redirectURI == "" {
+		redirectURI = openai.DefaultRedirectURI
 	}
-	redirectURI = stored.OpenAIRedirectURI
 	result, err := s.oauth.GenerateAuthURL(ctx, nil, redirectURI, PlatformOpenAI)
 	if err != nil {
 		return nil, err
@@ -622,7 +623,7 @@ func (s *OnboardingService) StartOpenAI(ctx context.Context, userID int64, redir
 	return &OnboardingOAuthStart{AuthURL: result.AuthURL, SessionID: result.SessionID, OnboardingState: state, RedirectURI: redirectURI}, nil
 }
 
-func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, sessionID, code, oauthState, onboardingState, redirectURI string) (*Account, error) {
+func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, sessionID, code, oauthState, onboardingState string, _ string) (*Account, error) {
 	stored, err := s.requireDiscord(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -630,9 +631,9 @@ func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, se
 	if err := s.verifyState(onboardingState, "openai", userID); err != nil {
 		return nil, err
 	}
-	redirectURI = stored.OpenAIRedirectURI
-	if strings.TrimSpace(redirectURI) == "" {
-		return nil, infraerrors.BadRequest("OPENAI_REDIRECT_URI_REQUIRED", "请先配置 OpenAI 回调地址")
+	redirectURI := strings.TrimSpace(stored.OpenAIRedirectURI)
+	if redirectURI == "" {
+		redirectURI = openai.DefaultRedirectURI
 	}
 	tokenInfo, err := s.oauth.ExchangeCode(ctx, &OpenAIExchangeCodeInput{SessionID: sessionID, Code: code, State: oauthState, RedirectURI: redirectURI})
 	if err != nil {

@@ -125,13 +125,13 @@ func (h *OnboardingHandler) CompleteOpenAI(c *gin.Context) {
 }
 
 type onboardingConfigRequest struct {
-	Enabled               *bool                                  `json:"enabled"`
-	Discord               onboardingDiscordConfigRequest         `json:"discord"`
-	PlanUnits             map[string]int                         `json:"plan_units"`
+	Enabled               *bool                                         `json:"enabled"`
+	Discord               onboardingDiscordConfigRequest                `json:"discord"`
+	PlanUnits             map[string]int                                `json:"plan_units"`
 	SubscriptionRules     map[string]service.OnboardingSubscriptionRule `json:"subscription_rules"`
-	OpenAIRedirectURI     string                                `json:"openai_redirect_uri"`
-	CCSwitchDownloadURL   string                                `json:"ccswitch_download_url"`
-	PublicFallbackDefault *bool                                  `json:"public_fallback_default"`
+	OpenAIRedirectURI     string                                        `json:"openai_redirect_uri"`
+	CCSwitchDownloadURL   string                                        `json:"ccswitch_download_url"`
+	PublicFallbackDefault *bool                                         `json:"public_fallback_default"`
 }
 
 type onboardingDiscordConfigRequest struct {
@@ -183,7 +183,7 @@ func (h *OnboardingHandler) UpdateAdminConfig(c *gin.Context) {
 }
 
 type onboardingBindAccountRequest struct {
-	UserID        int64 `json:"user_id" binding:"required,gt=0"`
+	UserID         int64 `json:"user_id" binding:"required,gt=0"`
 	PublicFallback bool  `json:"public_fallback"`
 }
 

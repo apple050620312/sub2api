@@ -212,7 +212,7 @@ func ProvideHandlers(
 	adminHandlers.Dashboard.SetDynamic5hPressureService(dynamic5hPressure)
 	adminHandlers.Onboarding = onboardingHandler
 	return &Handlers{
-		Onboarding: onboardingHandler,
+		Onboarding:       onboardingHandler,
 		Auth:             authHandler,
 		User:             userHandler,
 		APIKey:           apiKeyHandler,

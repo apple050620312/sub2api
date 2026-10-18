@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="w-full space-y-8 px-2 sm:px-4 xl:px-6">
+    <div class="w-full space-y-8">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('dynamic5h.workspaceTitle') }}</h1>
