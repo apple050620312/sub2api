@@ -56,7 +56,51 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code'
+    addBalanceWithCode: 'Add balance with a code',
+    pressure5h: {
+      normal: 'Pool capacity is available. Unused capacity may be borrowed.',
+      peak: 'Peak demand is active. Dynamic fair-share protection is now in effect.',
+      limited: 'Your rolling 5h usage is above the current fair share.',
+      usage: '5h Usage: {value}%',
+      remaining: 'Remaining: {value}%',
+      recover: 'Recover: {time}'
+    }
+  },
+
+  dynamic5h: {
+    accountWindows: 'Account pool usage windows',
+    searchAccounts: 'Search account name or platform',
+    windowUnavailable: 'Window data unavailable',
+    noAccounts: 'No matching accounts',
+    updatedAt: 'Last updated',
+    stale: 'Data is stale; enforcement is paused',
+    title: '5h Fair Usage',
+    description: 'Rolling usage against a fixed price allowance sampled from Plus windows',
+    unavailable: 'Collecting 3 valid Plus windows from low usage to nearly full. Additional user limits remain off until calibration is ready; upstream account limits still apply.',
+    disabled: 'Dynamic 5h pressure protection is disabled.',
+    normal: 'Normal',
+    peak: 'Peak',
+    limited: 'Limited',
+    available: 'Available',
+    usage: '5h Usage',
+    remaining: 'Remaining',
+    recover: 'Recover',
+    rulesTitle: 'Usage rules',
+    ruleNormal: 'When capacity is available, there is no extra limit; unused account capacity may be temporarily borrowed.',
+    rulePeak: 'When resources are tight, users above their dynamic fair share are limited first, while lighter users can continue.',
+    ruleDynamic: 'A 1x multiplier uses the median price cost of 3 sampled Plus windows, then stays fixed across model, user and pool changes. This estimate does not equal native provider quota.',
+    ruleRecover: 'Only new requests are limited. Successful usage is not clawed back, and the rolling five-hour window recovers over time.',
+    multiplier: 'Current extra allowance multiplier: {value}x',
+    exempt: 'Your account is currently exempt from peak enforcement',
+    pending: 'In-flight requests reserve {value}%',
+    warning: {
+      normal: 'Current usage is within your fair share.',
+      warning: 'More than 80% of your fair share has been used.',
+      borrowed: 'Usage is above fair share; borrowing remains available outside peak periods.',
+      limited: 'Peak protection is active and new requests wait for usage to recover.'
+    },
+    now: 'Now',
+    refresh: 'Refresh'
   },
 
   // Groups (shared)

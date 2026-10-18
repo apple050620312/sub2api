@@ -74,6 +74,7 @@ type usageLogBestEffortWriter interface {
 // postUsageBillingParams 统一扣费所需的参数
 type postUsageBillingParams struct {
 	Cost                  *CostBreakdown
+	MeterUnits            float64
 	User                  *User
 	APIKey                *APIKey
 	Account               *Account
@@ -179,6 +180,9 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 		if err := p.APIKeyService.UpdateRateLimitUsage(billingCtx, p.APIKey.ID, cost.ActualCost); err != nil {
 			slog.Error("update api key rate limit usage failed", "api_key_id", p.APIKey.ID, "error", err)
 		}
+	}
+	if p.MeterUnits > 0 && p.User != nil && p.Account != nil && deps.billingCacheService != nil {
+		deps.billingCacheService.RecordDynamic5hPressureUsage(billingCtx, p.User.ID, p.Account.Platform, p.MeterUnits)
 	}
 
 	if p.shouldUpdateAccountQuota() {
@@ -298,6 +302,9 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		AccountType:        p.Account.Type,
 		RequestPayloadHash: strings.TrimSpace(p.RequestPayloadHash),
 	}
+	if dynamic5hPlatformSupported(p.Account.Platform) {
+		cmd.Dynamic5hMeterUnits = dynamic5hPriceMeter(p.Cost, usageLog)
+	}
 	if usageLog != nil {
 		cmd.Model = usageLog.Model
 		cmd.BillingType = usageLog.BillingType
@@ -354,6 +361,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	if p == nil || deps == nil {
 		return false, nil
 	}
+	p.MeterUnits = dynamic5hPriceMeter(p.Cost, usageLog)
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
@@ -377,6 +385,10 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	if result == nil || !result.Applied {
 		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 		return false, nil
+	}
+	if deps.billingCacheService != nil {
+		deps.billingCacheService.ApplyCommittedDynamic5hMeter(billingCtx, result.Dynamic5hMeterEvent)
+		deps.billingCacheService.NotifyDynamic5hMetering()
 	}
 
 	if result.APIKeyQuotaExhausted {
@@ -418,6 +430,9 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 
 	if p.Cost.ActualCost > 0 && p.APIKey != nil && p.APIKey.HasRateLimits() && deps.billingCacheService != nil {
 		deps.billingCacheService.QueueUpdateAPIKeyRateLimitUsage(p.APIKey.ID, p.Cost.ActualCost)
+	}
+	if p.MeterUnits > 0 && p.User != nil && p.Account != nil && deps.billingCacheService != nil && !deps.billingCacheService.HasDurableDynamic5hMetering() {
+		deps.billingCacheService.RecordDynamic5hPressureUsage(ctx, p.User.ID, p.Account.Platform, p.MeterUnits)
 	}
 
 	deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
@@ -887,6 +902,9 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
+		if s.billingCacheService != nil {
+			s.billingCacheService.RecordDynamic5hPressureUsage(ctx, user.ID, account.Platform, dynamic5hPriceMeter(cost, usageLog))
+		}
 		logger.LegacyPrintf("service.gateway", "[SIMPLE MODE] Usage recorded (not billed): user=%d, tokens=%d", usageLog.UserID, usageLog.TotalTokens())
 		s.deferredService.ScheduleLastUsedUpdate(account.ID)
 		return nil

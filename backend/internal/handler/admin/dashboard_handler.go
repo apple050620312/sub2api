@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +20,13 @@ import (
 type DashboardHandler struct {
 	dashboardService   *service.DashboardService
 	aggregationService *service.DashboardAggregationService
+	dynamic5hPressure  *service.Dynamic5hPressureService
 	startTime          time.Time // Server start time for uptime calculation
+}
+
+type Dynamic5hPolicyRequest struct {
+	Exempt     bool    `json:"exempt"`
+	Multiplier float64 `json:"multiplier"`
 }
 
 // NewDashboardHandler creates a new admin dashboard handler
@@ -29,6 +36,97 @@ func NewDashboardHandler(dashboardService *service.DashboardService, aggregation
 		aggregationService: aggregationService,
 		startTime:          time.Now(),
 	}
+}
+
+func (h *DashboardHandler) SetDynamic5hPressureService(pressure *service.Dynamic5hPressureService) {
+	h.dynamic5hPressure = pressure
+}
+
+// GetDynamic5hPressure returns a fresh pool-wide pressure snapshot for admins.
+func (h *DashboardHandler) GetDynamic5hPressure(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.Success(c, service.Dynamic5hPressureStatus{State: service.Dynamic5hPressureNormal})
+		return
+	}
+	response.Success(c, h.dynamic5hPressure.AdminStatus(c.Request.Context(), true))
+}
+
+func (h *DashboardHandler) GetDynamic5hPressureOverview(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.Success(c, service.Dynamic5hAdminOverview{
+			Pool:  service.Dynamic5hPressureStatus{State: service.Dynamic5hPressureNormal},
+			Users: []service.Dynamic5hAdminUserStatus{},
+		})
+		return
+	}
+	response.Success(c, h.dynamic5hPressure.AdminOverview(c.Request.Context()))
+}
+
+func (h *DashboardHandler) ReconcileDynamic5hMetering(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.InternalError(c, "Dynamic 5h service unavailable")
+		return
+	}
+	var request struct {
+		Replay  bool  `json:"replay"`
+		AfterID int64 `json:"after_id"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil || request.AfterID < 0 {
+		response.BadRequest(c, "Invalid reconciliation request")
+		return
+	}
+	result, err := h.dynamic5hPressure.ReconcileMeters(c.Request.Context(), request.Replay, request.AfterID)
+	if err != nil {
+		response.InternalError(c, "Dynamic 5h reconciliation failed")
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.InternalError(c, "Dynamic 5h service unavailable")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	var req Dynamic5hPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid policy")
+		return
+	}
+	if req.Multiplier == 0 {
+		req.Multiplier = 1
+	}
+	if req.Multiplier <= 0 || math.IsNaN(req.Multiplier) || math.IsInf(req.Multiplier, 0) {
+		response.BadRequest(c, "Multiplier must be a positive number")
+		return
+	}
+	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt, Multiplier: req.Multiplier}, getAdminIDFromContext(c)); err != nil {
+		response.Error(c, 500, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID, "exempt": req.Exempt, "multiplier": req.Multiplier})
+}
+
+func (h *DashboardHandler) ResetDynamic5hUser(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.InternalError(c, "Dynamic 5h service unavailable")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	if err := h.dynamic5hPressure.ResetUserUsage(c.Request.Context(), userID, getAdminIDFromContext(c)); err != nil {
+		response.Error(c, 500, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"user_id": userID, "reset": true})
 }
 
 // parseTimeRange parses start_date, end_date query parameters

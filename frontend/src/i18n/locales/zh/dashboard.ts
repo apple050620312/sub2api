@@ -56,7 +56,51 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值'
+    addBalanceWithCode: '使用兑换码充值',
+    pressure5h: {
+      normal: '目前池容量充足，可借用其他用户的闲置容量。',
+      peak: '目前处于高峰状态，动态公平份额保护已生效。',
+      limited: '你的近 5 小时用量已超过当前公平份额。',
+      usage: '5 小时用量：{value}%',
+      remaining: '剩余：{value}%',
+      recover: '预计恢复：{time}'
+    }
+  },
+
+  dynamic5h: {
+    accountWindows: '账号池用量窗口',
+    searchAccounts: '搜索账号名称或平台',
+    windowUnavailable: '暂无窗口数据',
+    noAccounts: '暂无匹配账号',
+    updatedAt: '数据更新时间',
+    stale: '数据已过期，暂不执行限额保护',
+    title: '5 小时限额',
+    description: '以 Plus 真实窗口采样得到的固定价格额度为基准，按滚动窗口计算用量',
+    unavailable: '正在采集 Plus 真实窗口，需 3 个从低用量到接近满额的有效样本。基准未完成前不执行额外用户限流，账号自身窗口限制仍有效。',
+    disabled: '动态 5h 压力保护已停用。',
+    normal: '正常',
+    peak: '高峰保护',
+    limited: '已限制',
+    available: '可使用',
+    usage: '5 小时用量',
+    remaining: '剩余',
+    recover: '预计恢复',
+    rulesTitle: '使用规则',
+    ruleNormal: '资源充足时不会额外限制你；未使用的账号容量可以被暂时借用。',
+    rulePeak: '资源紧张时，已超过动态公平份额的用户会优先受到限制，使用较少的用户仍可继续。',
+    ruleDynamic: '倍率 1x 使用 3 个 Plus 真实窗口的价格消耗中位数，完成后锁定，不随模型价格、活跃人数或账号池变化。价格额度是估计值，不等同于上游原生配额。',
+    ruleRecover: '只限制后续新请求，不追回已经成功完成的用量；用量随近 5 小时窗口滚动恢复。',
+    multiplier: '当前额外额度倍率：{value}x',
+    exempt: '你的账号目前豁免高峰限制',
+    pending: '处理中请求已预留 {value}%',
+    warning: {
+      normal: '当前用量处于公平份额内。',
+      warning: '已使用超过公平份额的 80%，请留意后续用量。',
+      borrowed: '已超过公平份额；正常状态仍可借用闲置容量，高峰时可能受到限制。',
+      limited: '高峰保护已生效，新的请求将等待用量恢复。'
+    },
+    now: '现在',
+    refresh: '刷新'
   },
 
   // Groups (shared)

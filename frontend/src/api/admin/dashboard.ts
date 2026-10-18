@@ -13,7 +13,9 @@ import type {
   UserUsageTrendPoint,
   UserSpendingRankingResponse,
   UserBreakdownItem,
-  UsageRequestType
+  UsageRequestType,
+  Dynamic5hPressureStatus,
+  Dynamic5hAdminOverview
 } from '@/types'
 
 /**
@@ -41,6 +43,26 @@ export async function getRealtimeMetrics(): Promise<{
     average_response_time: number
     error_rate: number
   }>('/admin/dashboard/realtime')
+  return data
+}
+
+export async function getDynamic5hPressure(): Promise<Dynamic5hPressureStatus> {
+  const { data } = await apiClient.get<Dynamic5hPressureStatus>('/admin/dashboard/5h-pressure')
+  return data
+}
+
+export async function getDynamic5hPressureOverview(): Promise<Dynamic5hAdminOverview> {
+  const { data } = await apiClient.get<Dynamic5hAdminOverview>('/admin/dashboard/5h-pressure/overview')
+  return data
+}
+
+export async function setDynamic5hUserPolicy(userId: number, policy: { exempt: boolean; multiplier: number }) {
+  const { data } = await apiClient.put(`/admin/dashboard/5h-pressure/users/${userId}/policy`, policy)
+  return data
+}
+
+export async function resetDynamic5hUser(userId: number) {
+  const { data } = await apiClient.post(`/admin/dashboard/5h-pressure/users/${userId}/reset`, {})
   return data
 }
 
@@ -334,6 +356,10 @@ export async function getBatchApiKeysUsage(
 
 export const dashboardAPI = {
   getStats,
+  getDynamic5hPressure,
+  getDynamic5hPressureOverview,
+  setDynamic5hUserPolicy,
+  resetDynamic5hUser,
   getRealtimeMetrics,
   getUsageTrend,
   getModelStats,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -53,6 +54,14 @@ func (r *usageBillingRepository) Apply(ctx context.Context, cmd *service.UsageBi
 	result := &service.UsageBillingApplyResult{Applied: true}
 	if err := r.applyUsageBillingEffects(ctx, tx, cmd, result); err != nil {
 		return nil, err
+	}
+	if cmd.Dynamic5hMeterUnits > 0 {
+		event := &service.Dynamic5hMeterEvent{UserID: cmd.UserID, RequestID: cmd.RequestID, Amount: cmd.Dynamic5hMeterUnits, UserAmount: cmd.Dynamic5hMeterUnits}
+		if err := tx.QueryRowContext(ctx, `INSERT INTO dynamic_5h_meter_events (source_key, user_id, request_id, amount)
+VALUES ($1,$2,$3,$4) RETURNING id, occurred_at`, fmt.Sprintf("billing:%d:%s", cmd.APIKeyID, cmd.RequestID), cmd.UserID, cmd.RequestID, cmd.Dynamic5hMeterUnits).Scan(&event.ID, &event.OccurredAt); err != nil {
+			return nil, err
+		}
+		result.Dynamic5hMeterEvent = event
 	}
 
 	if err := tx.Commit(); err != nil {

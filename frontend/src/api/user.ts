@@ -17,6 +17,7 @@ import type {
   UserAffiliateDetail,
   AffiliateTransferResponse,
   PlatformQuotasResponse,
+  Dynamic5hUserStatus,
 } from '@/types'
 
 /**
@@ -194,6 +195,11 @@ export async function getMyPlatformQuotas(): Promise<PlatformQuotasResponse> {
   return data
 }
 
+export async function getDynamic5hPressure(): Promise<Dynamic5hUserStatus> {
+  const { data } = await apiClient.get<Dynamic5hUserStatus>('/user/5h-pressure')
+  return data
+}
+
 export const userAPI = {
   getProfile,
   updateProfile,
@@ -210,6 +216,7 @@ export const userAPI = {
   getAffiliateDetail,
   transferAffiliateQuota,
   getMyPlatformQuotas,
+  getDynamic5hPressure,
 }
 
 export default userAPI

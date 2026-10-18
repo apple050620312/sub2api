@@ -1,0 +1,21 @@
+{
+  "name": "heterogeneous-resource-cost",
+  "state": "peak",
+  "pool_capacity": 200,
+  "users": [{"id": 1, "active": true}, {"id": 2, "active": true}],
+  "resource_capacities": {"small": 100, "large": 100},
+  "events": [
+    {"at_seconds": 0, "user_id": 1, "platform": "openai", "units": 20, "resource_pool": "small", "resource_cost_per_unit": 2},
+    {"at_seconds": 0, "user_id": 2, "platform": "anthropic", "units": 20, "resource_pool": "large", "resource_cost_per_unit": 0.1},
+    {"at_seconds": 1, "user_id": 1, "platform": "openai", "units": 20, "resource_pool": "small", "resource_cost_per_unit": 2},
+    {"at_seconds": 1, "user_id": 2, "platform": "anthropic", "units": 20, "resource_pool": "large", "resource_cost_per_unit": 0.1},
+    {"at_seconds": 2, "user_id": 1, "platform": "openai", "units": 20, "resource_pool": "small", "resource_cost_per_unit": 2},
+    {"at_seconds": 2, "user_id": 2, "platform": "anthropic", "units": 20, "resource_pool": "large", "resource_cost_per_unit": 0.1},
+    {"at_seconds": 3, "user_id": 1, "platform": "openai", "units": 20, "resource_pool": "small", "resource_cost_per_unit": 2},
+    {"at_seconds": 3, "user_id": 2, "platform": "anthropic", "units": 20, "resource_pool": "large", "resource_cost_per_unit": 0.1},
+    {"at_seconds": 4, "user_id": 1, "platform": "openai", "units": 20, "resource_pool": "small", "resource_cost_per_unit": 2},
+    {"at_seconds": 4, "user_id": 2, "platform": "anthropic", "units": 20, "resource_pool": "large", "resource_cost_per_unit": 0.1},
+    {"at_seconds": 5, "user_id": 1, "platform": "openai", "units": 20, "resource_pool": "small", "resource_cost_per_unit": 2},
+    {"at_seconds": 5, "user_id": 2, "platform": "anthropic", "units": 20, "resource_pool": "large", "resource_cost_per_unit": 0.1}
+  ]
+}

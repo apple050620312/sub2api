@@ -1954,6 +1954,93 @@ export interface DashboardStats {
   tpm: number // 近5分钟平均每分钟Token数
 }
 
+export interface Dynamic5hPressureStatus {
+  calibration_samples?: number
+  enabled: boolean
+  data_available: boolean
+  calibration_ready: boolean
+  pressure: number
+  raw_pressure: number
+  state: 'normal' | 'peak'
+  peak_active: boolean
+  account_count: number
+  active_user_count: number
+  remaining_capacity: number
+  burn_rate_per_hour: number
+  projected_demand: number
+  pool_capacity: number
+  evaluated_at: string
+  capacity_recovering_next_hour: number
+  excluded_account_count: number
+  next_reset_at?: string
+  peak_threshold: number
+  normal_threshold: number
+}
+
+export interface Dynamic5hUserStatus {
+	pool?: {
+    calibration_ready?: boolean
+    calibration_samples?: number
+    pressure: number
+    account_count: number
+    excluded_account_count: number
+    active_user_count: number
+    stale: boolean
+    evaluated_at: string
+    next_reset_at?: string
+    accounts: Dynamic5hAdminOverview['accounts']
+  }
+  enabled: boolean
+  state: 'normal' | 'peak'
+  limit_active: boolean
+  currently_limited: boolean
+  usage_percent: number
+  remaining_percent: number
+  window_started_at?: string
+  recover_at?: string
+  multiplier: number
+  exempt: boolean
+  warning_level: 'normal' | 'warning' | 'borrowed' | 'limited'
+  pending_percent: number
+}
+
+export interface Dynamic5hAdminUserStatus extends Dynamic5hUserStatus {
+  user_id: number
+  email: string
+  active: boolean
+  exempt: boolean
+  multiplier: number
+}
+
+export interface Dynamic5hAdminOverview {
+  pool: Dynamic5hPressureStatus
+  users: Dynamic5hAdminUserStatus[]
+  accounts: Array<{
+    account_id: number
+    name: string
+    platform: string
+    included: boolean
+    reason: string
+    five_hour_used_percent?: number
+    five_hour_reset_at?: string
+    seven_day_used_percent?: number
+    seven_day_reset_at?: string
+    rejoin_at?: string
+  }>
+  audit_logs: Array<{
+    id: number
+    user_id: number
+    actor_user_id?: number
+    action: string
+    before_usage?: number
+    after_usage?: number
+    old_policy?: { exempt: boolean; multiplier: number }
+    new_policy?: { exempt: boolean; multiplier: number }
+    created_at: string
+  }>
+  guaranteed_capacity_ratio: number
+}
+
 export interface UsageStatsResponse {
   period?: string
   total_requests: number
