@@ -90,7 +90,7 @@ func (s *ServicePoolResetService) RunOnce(ctx context.Context) error {
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _ = onboarding.db.ExecContext(cleanup, `UPDATE service_pool_reset_state SET lease_until=NOW()+INTERVAL '2 minutes' WHERE id=1`)
+		_, _ = onboarding.db.ExecContext(cleanup, `UPDATE service_pool_reset_state SET lease_until=NOW()+($1 * INTERVAL '1 second') WHERE id=1`, int64(servicePoolResetInterval/time.Second))
 	}()
 	accounts, err := onboarding.listOpenAIAccounts(ctx)
 	if err != nil {

@@ -13,7 +13,11 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-const servicePoolResetInterval = 2 * time.Minute
+const (
+	servicePoolResetInterval     = 15 * time.Minute
+	servicePoolResetMaxSampleGap = 45 * time.Minute
+	servicePoolResetEvidenceTTL  = time.Hour
+)
 
 type ServicePoolResetConfig struct {
 	Enabled   bool   `json:"enabled"`
@@ -179,7 +183,7 @@ func evaluateServicePoolReset(state *servicePoolResetState, cohort []string, sam
 		after, fresh := samples[identity]
 		before, known := state.Samples[identity]
 		pending, hasPending := state.Pending[identity]
-		if hasPending && (now.Sub(pending.At) > 10*time.Minute || now.Before(pending.At)) {
+		if hasPending && (now.Sub(pending.At) > servicePoolResetEvidenceTTL || now.Before(pending.At)) {
 			delete(state.Pending, identity)
 			hasPending = false
 		}
@@ -202,7 +206,7 @@ func evaluateServicePoolReset(state *servicePoolResetState, cohort []string, sam
 				delete(state.Pending, identity)
 			}
 		}
-		if known && after.At.After(before.At) && after.At.Sub(before.At) <= 6*time.Minute && now.Sub(after.At) <= 3*time.Minute {
+		if known && after.At.After(before.At) && after.At.Sub(before.At) <= servicePoolResetMaxSampleGap && now.Sub(after.At) <= 3*time.Minute {
 			if before.CreditsKnown && after.CreditsKnown && after.CreditCount > before.CreditCount {
 				credits := make([]string, 0, len(after.Credits))
 				for credit := range after.Credits {
@@ -255,7 +259,7 @@ func evaluateServicePoolReset(state *servicePoolResetState, cohort []string, sam
 	for _, key := range keys {
 		count := counts[key]
 		if count*10 >= len(cohort)*9 {
-			if now.Sub(state.LastResetAt) < 10*time.Minute {
+			if now.Sub(state.LastResetAt) < servicePoolResetEvidenceTTL {
 				state.Pending = make(map[string]servicePoolResetEvidence)
 				state.Status.PendingAccounts = 0
 				return nil

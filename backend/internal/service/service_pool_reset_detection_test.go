@@ -73,7 +73,7 @@ func TestServicePoolResetRejectsNaturalExpiryMissingDataConsumptionAndStaleSampl
 			require.Nil(t, evaluateServicePoolReset(state, cohort, before, now))
 			at := now.Add(2 * time.Minute)
 			if scenario == "stale_baseline" {
-				at = now.Add(10 * time.Minute)
+				at = now.Add(time.Hour)
 			}
 			if scenario == "old_round" {
 				at = now.Add(-time.Minute)
@@ -104,6 +104,52 @@ func TestServicePoolResetRejectsNaturalExpiryMissingDataConsumptionAndStaleSampl
 			}
 			require.Nil(t, evaluateServicePoolReset(state, cohort, after, at.Add(2*time.Minute)))
 		})
+	}
+}
+
+func TestServicePoolResetFifteenMinutePollingConfirmsWindowReset(t *testing.T) {
+	now := time.Now().UTC()
+	state := &servicePoolResetState{}
+	cohort, samples := poolResetTestSamples(now, 8, 40)
+	require.Nil(t, evaluateServicePoolReset(state, cohort, samples, now))
+	for round := 1; round <= 2; round++ {
+		at := now.Add(time.Duration(round) * 15 * time.Minute)
+		_, samples = poolResetTestSamples(at, 8, 0)
+		decision := evaluateServicePoolReset(state, cohort, samples, at)
+		if round == 1 {
+			require.Nil(t, decision)
+			require.Len(t, state.Pending, 8)
+		} else {
+			require.NotNil(t, decision)
+			require.Equal(t, "windows", decision.Kind)
+		}
+	}
+}
+
+func TestServicePoolResetWaitsForEightAccountVoucherPropagation(t *testing.T) {
+	now := time.Now().UTC()
+	state := &servicePoolResetState{}
+	cohort, samples := poolResetTestSamples(now, 8, 40)
+	require.Nil(t, evaluateServicePoolReset(state, cohort, samples, now))
+	batch := now.Add(7 * 24 * time.Hour).Format(time.RFC3339)
+	for round, granted := range []int{4, 7, 8, 8} {
+		at := now.Add(time.Duration(round+1) * 15 * time.Minute)
+		_, samples = poolResetTestSamples(at, 8, 40)
+		for index := range granted {
+			identity := cohort[index]
+			sample := samples[identity]
+			sample.Credits = map[string]string{identity: batch}
+			sample.CreditCount = 1
+			samples[identity] = sample
+		}
+		decision := evaluateServicePoolReset(state, cohort, samples, at)
+		if round < 3 {
+			require.Nil(t, decision)
+		} else {
+			require.NotNil(t, decision)
+			require.Equal(t, "credits", decision.Kind)
+			require.Equal(t, 8, decision.Observed)
+		}
 	}
 }
 
@@ -155,6 +201,49 @@ func TestServicePoolResetOnlyNewSameBatchVouchersTrigger(t *testing.T) {
 				require.Nil(t, decision)
 			}
 		})
+	}
+}
+
+func TestServicePoolResetCoalescesDelayedVouchersAfterWindowReset(t *testing.T) {
+	now := time.Now().UTC()
+	state := &servicePoolResetState{LastResetAt: now}
+	cohort, samples := poolResetTestSamples(now, 8, 0)
+	require.Nil(t, evaluateServicePoolReset(state, cohort, samples, now))
+	batch := now.Add(7 * 24 * time.Hour).Format(time.RFC3339)
+	for round := 1; round <= 2; round++ {
+		at := now.Add(time.Duration(round) * 15 * time.Minute)
+		_, samples = poolResetTestSamples(at, 8, 0)
+		for identity, sample := range samples {
+			sample.Credits = map[string]string{identity: batch}
+			sample.CreditCount = 1
+			samples[identity] = sample
+		}
+		require.Nil(t, evaluateServicePoolReset(state, cohort, samples, at))
+	}
+	require.Empty(t, state.Pending)
+}
+
+func TestServicePoolResetRejectsExpiredPropagationEvidence(t *testing.T) {
+	now := time.Now().UTC()
+	state := &servicePoolResetState{}
+	cohort, samples := poolResetTestSamples(now, 8, 40)
+	require.Nil(t, evaluateServicePoolReset(state, cohort, samples, now))
+	batch := now.Add(7 * 24 * time.Hour).Format(time.RFC3339)
+	for round := 1; round <= 7; round++ {
+		at := now.Add(time.Duration(round) * 15 * time.Minute)
+		_, samples = poolResetTestSamples(at, 8, 40)
+		granted := 4
+		if round >= 6 {
+			granted = 8
+		}
+		for index := range granted {
+			identity := cohort[index]
+			sample := samples[identity]
+			sample.Credits = map[string]string{identity: batch}
+			sample.CreditCount = 1
+			samples[identity] = sample
+		}
+		require.Nil(t, evaluateServicePoolReset(state, cohort, samples, at))
 	}
 }
 
