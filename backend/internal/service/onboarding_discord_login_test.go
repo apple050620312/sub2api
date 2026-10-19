@@ -16,22 +16,24 @@ import (
 func TestDecodeDiscordJSONResponseMapsUpstreamFailures(t *testing.T) {
 	tests := []struct {
 		name       string
+		operation  string
 		statusCode int
 		body       string
 		wantCode   int
 		wantReason string
 	}{
-		{name: "permission failure", statusCode: http.StatusForbidden, body: `{"message":"Missing Permissions"}`, wantCode: http.StatusBadRequest, wantReason: "DISCORD_API_ERROR"},
-		{name: "invalid client", statusCode: http.StatusUnauthorized, body: `{"error":"invalid_client"}`, wantCode: http.StatusBadRequest, wantReason: "DISCORD_CLIENT_AUTH_FAILED"},
-		{name: "rate limited", statusCode: http.StatusTooManyRequests, body: `{"retry_after":1}`, wantCode: http.StatusTooManyRequests, wantReason: "DISCORD_RATE_LIMITED"},
-		{name: "discord outage", statusCode: http.StatusBadGateway, body: `{"message":"upstream unavailable"}`, wantCode: http.StatusServiceUnavailable, wantReason: "DISCORD_API_UNAVAILABLE"},
-		{name: "invalid success payload", statusCode: http.StatusOK, body: `{`, wantCode: http.StatusServiceUnavailable, wantReason: "DISCORD_API_INVALID_RESPONSE"},
+		{name: "permission failure", operation: "授予身份组", statusCode: http.StatusForbidden, body: `{"message":"Missing Permissions"}`, wantCode: http.StatusBadRequest, wantReason: "DISCORD_API_ERROR"},
+		{name: "invalid client", operation: "兑换授权码", statusCode: http.StatusUnauthorized, body: `{"error":"invalid_client"}`, wantCode: http.StatusBadRequest, wantReason: "DISCORD_CLIENT_AUTH_FAILED"},
+		{name: "invalid user token", operation: "读取用户资料", statusCode: http.StatusUnauthorized, body: `{"message":"401: Unauthorized"}`, wantCode: http.StatusBadRequest, wantReason: "DISCORD_TOKEN_INVALID"},
+		{name: "rate limited", operation: "加入服务器", statusCode: http.StatusTooManyRequests, body: `{"retry_after":1}`, wantCode: http.StatusTooManyRequests, wantReason: "DISCORD_RATE_LIMITED"},
+		{name: "discord outage", operation: "兑换授权码", statusCode: http.StatusBadGateway, body: `{"message":"upstream unavailable"}`, wantCode: http.StatusServiceUnavailable, wantReason: "DISCORD_API_UNAVAILABLE"},
+		{name: "invalid success payload", operation: "读取用户资料", statusCode: http.StatusOK, body: `{`, wantCode: http.StatusServiceUnavailable, wantReason: "DISCORD_API_INVALID_RESPONSE"},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := &http.Response{StatusCode: test.statusCode, Body: io.NopCloser(strings.NewReader(test.body))}
-			err := decodeDiscordJSONResponse(response, &struct{}{}, "测试")
+			err := decodeDiscordJSONResponse(response, &struct{}{}, test.operation)
 			require.Error(t, err)
 			require.Equal(t, test.wantCode, infraerrors.Code(err))
 			require.Equal(t, test.wantReason, infraerrors.Reason(err))
