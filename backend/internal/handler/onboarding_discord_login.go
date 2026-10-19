@@ -2,6 +2,7 @@ package handler
 
 import (
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -74,12 +75,16 @@ func (h *OnboardingHandler) DiscordLoginComplete(c *gin.Context) {
 	}
 	profile, err := h.service.CompleteDiscordLoginAuthorization(c.Request.Context(), req.Code)
 	if err != nil {
-		response.ErrorFrom(c, err)
+		respondDiscordLoginError(c, err)
+		return
+	}
+	if h.auth == nil {
+		respondDiscordLoginError(c, errors.New("auth service is unavailable"))
 		return
 	}
 	_, user, err := h.auth.LoginOrRegisterDiscordEmail(c.Request.Context(), profile.Email, profile.Username)
 	if err != nil {
-		response.ErrorFrom(c, err)
+		respondDiscordLoginError(c, err)
 		return
 	}
 	if h.settings != nil && h.settings.IsBackendModeEnabled(c.Request.Context()) && user.Role != service.RoleAdmin {
@@ -87,8 +92,17 @@ func (h *OnboardingHandler) DiscordLoginComplete(c *gin.Context) {
 		return
 	}
 	if err := h.service.BindDiscordLogin(c.Request.Context(), user.ID, profile); err != nil {
-		response.ErrorFrom(c, err)
+		respondDiscordLoginError(c, err)
 		return
 	}
 	respondWithTokenPair(c, h.auth, user)
+}
+
+func respondDiscordLoginError(c *gin.Context, err error) {
+	var applicationError *infraerrors.ApplicationError
+	if errors.As(err, &applicationError) {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.ErrorFrom(c, infraerrors.ServiceUnavailable("DISCORD_LOGIN_UNAVAILABLE", "Discord 登录服务暂时不可用，请稍后重试"))
 }

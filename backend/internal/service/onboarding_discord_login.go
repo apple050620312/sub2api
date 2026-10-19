@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -50,12 +52,12 @@ func (s *OnboardingService) exchangeDiscordAuthorization(ctx context.Context, st
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, discordNetworkError("兑换授权码", err)
 	}
 	var token struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err := decodeJSONResponse(resp, &token); err != nil {
+	if err := decodeDiscordJSONResponse(resp, &token, "兑换授权码"); err != nil {
 		return nil, err
 	}
 	if token.AccessToken == "" {
@@ -68,10 +70,10 @@ func (s *OnboardingService) exchangeDiscordAuthorization(ctx context.Context, st
 	userReq.Header.Set("Authorization", "Bearer "+token.AccessToken)
 	userResp, err := s.httpClient.Do(userReq)
 	if err != nil {
-		return nil, err
+		return nil, discordNetworkError("读取用户资料", err)
 	}
 	var profile DiscordLoginProfile
-	if err := decodeJSONResponse(userResp, &profile); err != nil {
+	if err := decodeDiscordJSONResponse(userResp, &profile, "读取用户资料"); err != nil {
 		return nil, err
 	}
 	if profile.ID == "" {
@@ -92,9 +94,9 @@ func (s *OnboardingService) joinDiscordMember(ctx context.Context, stored *onboa
 	joinReq.Header.Set("Content-Type", "application/json")
 	joinResp, err := s.httpClient.Do(joinReq)
 	if err != nil {
-		return err
+		return discordNetworkError("加入服务器", err)
 	}
-	if err := decodeJSONResponse(joinResp, nil); err != nil {
+	if err := decodeDiscordJSONResponse(joinResp, nil, "加入服务器"); err != nil {
 		return fmt.Errorf("加入 Discord 服务器失败：%w", err)
 	}
 	if stored.Discord.RoleID != "" {
@@ -105,9 +107,9 @@ func (s *OnboardingService) joinDiscordMember(ctx context.Context, stored *onboa
 		roleReq.Header.Set("Authorization", "Bot "+stored.Discord.BotToken)
 		roleResp, err := s.httpClient.Do(roleReq)
 		if err != nil {
-			return err
+			return discordNetworkError("授予身份组", err)
 		}
-		if err := decodeJSONResponse(roleResp, nil); err != nil {
+		if err := decodeDiscordJSONResponse(roleResp, nil, "授予身份组"); err != nil {
 			return fmt.Errorf("授予 Discord 身份组失败：%w", err)
 		}
 	}
@@ -133,12 +135,15 @@ func (s *OnboardingService) CompleteDiscordLoginAuthorization(ctx context.Contex
 	}
 	rows, err := s.client(ctx).QueryContext(ctx, `SELECT u.email FROM onboarding_discord_bindings b JOIN users u ON u.id=b.user_id AND u.deleted_at IS NULL WHERE b.discord_user_id=$1`, profile.ID)
 	if err != nil {
-		return nil, err
+		return nil, infraerrors.ServiceUnavailable("DISCORD_LOGIN_STORAGE_UNAVAILABLE", "Discord 登录存储暂时不可用，请稍后重试")
 	}
 	if rows.Next() {
 		var existingEmail string
 		err = rows.Scan(&existingEmail)
-		if err == nil && !strings.EqualFold(strings.TrimSpace(existingEmail), profile.Email) {
+		if err != nil {
+			return nil, infraerrors.ServiceUnavailable("DISCORD_LOGIN_STORAGE_UNAVAILABLE", "Discord 登录存储暂时不可用，请稍后重试")
+		}
+		if !strings.EqualFold(strings.TrimSpace(existingEmail), profile.Email) {
 			err = infraerrors.Conflict("DISCORD_EMAIL_MISMATCH", "Discord 邮箱与站内用户邮箱不一致，请联系管理员修改用户邮箱后重试")
 		}
 	}
@@ -147,7 +152,10 @@ func (s *OnboardingService) CompleteDiscordLoginAuthorization(ctx context.Contex
 	}
 	_ = rows.Close()
 	if err != nil {
-		return nil, err
+		if isApplicationError(err) {
+			return nil, err
+		}
+		return nil, infraerrors.ServiceUnavailable("DISCORD_LOGIN_STORAGE_UNAVAILABLE", "Discord 登录存储暂时不可用，请稍后重试")
 	}
 	if err := s.joinDiscordMember(ctx, stored, profile); err != nil {
 		return nil, err
@@ -159,8 +167,44 @@ func (s *OnboardingService) CompleteDiscordLoginAuthorization(ctx context.Contex
 func (s *OnboardingService) BindDiscordLogin(ctx context.Context, userID int64, profile *DiscordLoginProfile) error {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
-		return err
+		return infraerrors.ServiceUnavailable("DISCORD_LOGIN_STORAGE_UNAVAILABLE", "Discord 登录配置暂时不可用，请稍后重试")
 	}
 	_, err = s.saveDiscordBinding(ctx, userID, profile.ID, profile.Username, stored)
+	if err != nil {
+		if isApplicationError(err) {
+			return err
+		}
+		return infraerrors.ServiceUnavailable("DISCORD_LOGIN_STORAGE_UNAVAILABLE", "Discord 登录绑定暂时不可用，请稍后重试")
+	}
 	return err
+}
+
+func discordNetworkError(operation string, _ error) error {
+	return infraerrors.ServiceUnavailable("DISCORD_API_UNAVAILABLE", fmt.Sprintf("Discord %s暂时不可用，请稍后重试", operation))
+}
+
+func isApplicationError(err error) bool {
+	var applicationError *infraerrors.ApplicationError
+	return errors.As(err, &applicationError)
+}
+
+func decodeDiscordJSONResponse(resp *http.Response, target any, operation string) error {
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return infraerrors.ServiceUnavailable("DISCORD_API_UNAVAILABLE", fmt.Sprintf("读取 Discord %s响应失败，请稍后重试", operation))
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			return infraerrors.ServiceUnavailable("DISCORD_API_UNAVAILABLE", fmt.Sprintf("Discord %s暂时不可用，请稍后重试", operation))
+		}
+		return infraerrors.New(http.StatusBadGateway, "DISCORD_API_ERROR", fmt.Sprintf("Discord %s失败（HTTP %d），请检查机器人权限和应用配置", operation, resp.StatusCode))
+	}
+	if target == nil || len(body) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(body, target); err != nil {
+		return infraerrors.ServiceUnavailable("DISCORD_API_INVALID_RESPONSE", fmt.Sprintf("Discord %s返回了无效响应，请稍后重试", operation))
+	}
+	return nil
 }
