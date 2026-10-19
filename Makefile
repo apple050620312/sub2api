@@ -4,6 +4,9 @@ FRONTEND_CRITICAL_VITEST := \
 	src/views/__tests__/dynamic5hPages.spec.ts \
 	src/views/__tests__/serviceCenterAccounts.spec.ts \
 	src/utils/__tests__/serviceCenter.spec.ts \
+	src/utils/__tests__/opsErrorExport.spec.ts \
+	src/views/admin/__tests__/UsageView.spec.ts \
+	src/components/admin/usage/__tests__/UsageFilters.spec.ts \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \

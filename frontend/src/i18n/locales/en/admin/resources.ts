@@ -558,6 +558,12 @@ export default {
       ipAddress: 'IP',
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
+      errorExport: {
+        severity: 'Severity',
+        clientRequestId: 'Client request ID',
+        success: 'Error logs exported successfully',
+        failed: 'Failed to export error logs. Please try again.'
+      },
       userDeletedBadge: 'Deleted',
       tokenRanking: {
         subtitle: 'Per-user token usage for the current filters and time range',

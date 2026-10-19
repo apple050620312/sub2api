@@ -192,6 +192,7 @@ import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admi
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
+import { createErrorLogWorkbook } from '@/utils/opsErrorExport'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
@@ -201,7 +202,7 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
 import { listErrorLogs } from '@/api/admin/ops'
-import type { OpsErrorLog } from '@/api/admin/ops'
+import type { OpsErrorLog, OpsErrorListQueryParams } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -573,6 +574,7 @@ const getRequestTypeLabel = (log: AdminUsageLog): string => {
 }
 
 const exportToExcel = async () => {
+  if (activeTab.value === 'errors') return exportErrorsToExcel()
   if (exporting.value) return; exporting.value = true; exportProgress.show = true
   const c = new AbortController(); exportAbortController = c
   try {
@@ -815,26 +817,67 @@ const selectedErrorId = ref<number | null>(null)
 const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
   d ? new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString() : undefined
 
+const buildErrorListParams = (page: number, pageSize: number): OpsErrorListQueryParams => ({
+  page,
+  page_size: pageSize,
+  view: 'all',
+  start_time: toRFC3339(filters.value.start_date),
+  end_time: toRFC3339(filters.value.end_date, true),
+  user_id: filters.value.user_id ?? undefined,
+  api_key_id: filters.value.api_key_id ?? undefined,
+  account_id: filters.value.account_id ?? undefined,
+  group_id: filters.value.group_id ?? undefined,
+  model: filters.value.model || undefined,
+  phase: filters.value.error_phase || undefined,
+  category: filters.value.error_category || undefined,
+  status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
+  sort_by: errSortBy.value,
+  sort_order: errSortOrder.value,
+})
+
+const exportErrorsToExcel = async () => {
+  if (exporting.value) return
+  const params = buildErrorListParams(1, 100)
+  const filename = `errors_${filters.value.start_date}_to_${filters.value.end_date}.xlsx`
+  const controller = new AbortController()
+  exportAbortController = controller
+  exporting.value = true
+  Object.assign(exportProgress, { show: true, progress: 0, current: 0, total: 0, estimatedTime: '' })
+  try {
+    const workbook = await createErrorLogWorkbook(params, {
+      signal: controller.signal,
+      t,
+      onProgress: (current, total) => {
+        exportProgress.current = current
+        exportProgress.total = total
+        exportProgress.progress = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0
+      },
+    })
+    const XLSX = await import('xlsx')
+    controller.signal.throwIfAborted()
+    saveAs(new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }), filename)
+    appStore.showSuccess(t('admin.usage.errorExport.success'))
+  } catch (error) {
+    if (!controller.signal.aborted) {
+      console.error('Failed to export errors:', error)
+      appStore.showError(t('admin.usage.errorExport.failed'))
+    }
+  } finally {
+    controller.abort()
+    if (exportAbortController === controller) {
+      exportAbortController = null
+      exporting.value = false
+      exportProgress.show = false
+    }
+  }
+}
+
 const loadAdminErrors = async () => {
   errLoading.value = true
   try {
-    const resp = await listErrorLogs({
-      page: errPage.value,
-      page_size: errPageSize.value,
-      view: 'all',
-      start_time: toRFC3339(filters.value.start_date),
-      end_time: toRFC3339(filters.value.end_date, true),
-      user_id: filters.value.user_id ?? undefined,
-      api_key_id: filters.value.api_key_id ?? undefined,
-      account_id: filters.value.account_id ?? undefined,
-      group_id: filters.value.group_id ?? undefined,
-      model: filters.value.model || undefined,
-      phase: filters.value.error_phase || undefined,
-      category: filters.value.error_category || undefined,
-      status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
-      sort_by: errSortBy.value,
-      sort_order: errSortOrder.value,
-    })
+    const resp = await listErrorLogs(buildErrorListParams(errPage.value, errPageSize.value))
     errRows.value = resp.items
     errTotal.value = resp.total
   } catch (error) {

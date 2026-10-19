@@ -185,14 +185,12 @@
           {{ t('common.reset') }}
         </button>
         <slot name="after-reset" />
-        <template v-if="mode === 'usage'">
-          <button type="button" @click="$emit('cleanup')" class="btn btn-danger">
-            {{ t('admin.usage.cleanup.button') }}
-          </button>
-          <button type="button" @click="$emit('export')" :disabled="exporting" class="btn btn-primary">
-            {{ t('usage.exportExcel') }}
-          </button>
-        </template>
+        <button v-if="mode === 'usage'" type="button" @click="$emit('cleanup')" class="btn btn-danger">
+          {{ t('admin.usage.cleanup.button') }}
+        </button>
+        <button v-if="mode !== 'ranking'" type="button" @click="$emit('export')" :disabled="exporting" class="btn btn-primary">
+          {{ t('usage.exportExcel') }}
+        </button>
       </div>
     </div>
   </div>

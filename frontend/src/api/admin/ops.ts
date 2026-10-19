@@ -1124,13 +1124,16 @@ export type OpsErrorListQueryParams = {
 }
 
 // Legacy unified endpoints
-export async function listErrorLogs(params: OpsErrorListQueryParams): Promise<OpsErrorLogsResponse> {
-  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/errors', { params })
+export async function listErrorLogs(
+  params: OpsErrorListQueryParams,
+  options: OpsRequestOptions = {}
+): Promise<OpsErrorLogsResponse> {
+  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/errors', { params, signal: options.signal })
   return data
 }
 
-export async function getErrorLogDetail(id: number): Promise<OpsErrorDetail> {
-  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/errors/${id}`)
+export async function getErrorLogDetail(id: number, options: OpsRequestOptions = {}): Promise<OpsErrorDetail> {
+  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/errors/${id}`, { signal: options.signal })
   return data
 }
 
