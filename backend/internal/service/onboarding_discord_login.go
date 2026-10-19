@@ -23,7 +23,7 @@ type DiscordLoginProfile struct {
 }
 
 func discordLoginConfigured(stored *onboardingStoredConfig) bool {
-	return stored != nil && stored.Discord.ClientID != "" && stored.Discord.ClientSecret != "" && stored.Discord.BotToken != "" && stored.Discord.GuildID != "" && strings.TrimSpace(stored.Discord.RedirectURI) != ""
+	return stored != nil && strings.TrimSpace(stored.Discord.ClientID) != "" && strings.TrimSpace(stored.Discord.ClientSecret) != "" && strings.TrimSpace(stored.Discord.BotToken) != "" && strings.TrimSpace(stored.Discord.GuildID) != "" && strings.TrimSpace(stored.Discord.RedirectURI) != ""
 }
 
 func (s *OnboardingService) DiscordLoginReady(ctx context.Context) (bool, error) {
@@ -39,12 +39,12 @@ func (s *OnboardingService) StartDiscordLoginAuthorization(ctx context.Context, 
 	if !discordLoginConfigured(stored) {
 		return "", ErrDiscordNotConfigured
 	}
-	query := url.Values{"client_id": {stored.Discord.ClientID}, "response_type": {"code"}, "redirect_uri": {strings.TrimSpace(stored.Discord.RedirectURI)}, "scope": {"identify email guilds.join"}, "state": {state}}
+	query := url.Values{"client_id": {strings.TrimSpace(stored.Discord.ClientID)}, "response_type": {"code"}, "redirect_uri": {strings.TrimSpace(stored.Discord.RedirectURI)}, "scope": {"identify email guilds.join"}, "state": {state}}
 	return "https://discord.com/oauth2/authorize?" + query.Encode(), nil
 }
 
 func (s *OnboardingService) exchangeDiscordAuthorization(ctx context.Context, stored *onboardingStoredConfig, code, redirectURI string) (*DiscordLoginProfile, error) {
-	form := url.Values{"client_id": {stored.Discord.ClientID}, "client_secret": {stored.Discord.ClientSecret}, "grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {redirectURI}}
+	form := url.Values{"client_id": {strings.TrimSpace(stored.Discord.ClientID)}, "client_secret": {strings.TrimSpace(stored.Discord.ClientSecret)}, "grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {strings.TrimSpace(redirectURI)}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://discord.com/api/oauth2/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
@@ -84,13 +84,13 @@ func (s *OnboardingService) exchangeDiscordAuthorization(ctx context.Context, st
 }
 
 func (s *OnboardingService) joinDiscordMember(ctx context.Context, stored *onboardingStoredConfig, profile *DiscordLoginProfile) error {
-	joinURL := "https://discord.com/api/guilds/" + url.PathEscape(stored.Discord.GuildID) + "/members/" + url.PathEscape(profile.ID)
+	joinURL := "https://discord.com/api/guilds/" + url.PathEscape(strings.TrimSpace(stored.Discord.GuildID)) + "/members/" + url.PathEscape(profile.ID)
 	joinBody, _ := json.Marshal(map[string]string{"access_token": profile.accessToken})
 	joinReq, err := http.NewRequestWithContext(ctx, http.MethodPut, joinURL, strings.NewReader(string(joinBody)))
 	if err != nil {
 		return err
 	}
-	joinReq.Header.Set("Authorization", "Bot "+stored.Discord.BotToken)
+	joinReq.Header.Set("Authorization", "Bot "+strings.TrimSpace(stored.Discord.BotToken))
 	joinReq.Header.Set("Content-Type", "application/json")
 	joinResp, err := s.httpClient.Do(joinReq)
 	if err != nil {
@@ -99,12 +99,12 @@ func (s *OnboardingService) joinDiscordMember(ctx context.Context, stored *onboa
 	if err := decodeDiscordJSONResponse(joinResp, nil, "加入服务器"); err != nil {
 		return fmt.Errorf("加入 Discord 服务器失败：%w", err)
 	}
-	if stored.Discord.RoleID != "" {
-		roleReq, err := http.NewRequestWithContext(ctx, http.MethodPut, joinURL+"/roles/"+url.PathEscape(stored.Discord.RoleID), nil)
+	if strings.TrimSpace(stored.Discord.RoleID) != "" {
+		roleReq, err := http.NewRequestWithContext(ctx, http.MethodPut, joinURL+"/roles/"+url.PathEscape(strings.TrimSpace(stored.Discord.RoleID)), nil)
 		if err != nil {
 			return err
 		}
-		roleReq.Header.Set("Authorization", "Bot "+stored.Discord.BotToken)
+		roleReq.Header.Set("Authorization", "Bot "+strings.TrimSpace(stored.Discord.BotToken))
 		roleResp, err := s.httpClient.Do(roleReq)
 		if err != nil {
 			return discordNetworkError("授予身份组", err)
@@ -195,6 +195,12 @@ func decodeDiscordJSONResponse(resp *http.Response, target any, operation string
 		return infraerrors.ServiceUnavailable("DISCORD_API_UNAVAILABLE", fmt.Sprintf("读取 Discord %s响应失败，请稍后重试", operation))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			if operation == "兑换授权码" {
+				return infraerrors.BadRequest("DISCORD_CLIENT_AUTH_FAILED", "Discord 应用凭据无效，请检查 Client ID、Client Secret 和回调地址")
+			}
+			return infraerrors.BadRequest("DISCORD_TOKEN_INVALID", fmt.Sprintf("Discord %s授权已失效，请重新登录", operation))
+		}
 		if resp.StatusCode == http.StatusTooManyRequests {
 			return infraerrors.TooManyRequests("DISCORD_RATE_LIMITED", fmt.Sprintf("Discord %s请求过于频繁，请稍后重试", operation))
 		}
