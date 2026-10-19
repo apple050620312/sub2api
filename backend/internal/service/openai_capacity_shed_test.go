@@ -127,6 +127,8 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 		{`{"type":"response.failed","response":{"error":{"code":"server_is_overloaded"}}}`, "response.failed", false},
 		{`{"type":"response.created","response":{"id":"resp_1"}}`, "response.created", false},
 		{`{"type":"response.in_progress","response":{"id":"resp_1"}}`, "response.in_progress", false},
+		{`{"type":"response.queued","response":{"id":"resp_1"}}`, "response.queued", false},
+		{`{"type":"response.metadata","response":{"id":"resp_1","metadata":{"moderation":"pending"}}}`, "response.metadata", false},
 		{`{"type":"keepalive"}`, "keepalive", false},
 		{`{"type":"unknown_event"}`, "unknown_event", true},
 		{`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[]}}`, "response.output_item.added", false},
@@ -146,6 +148,12 @@ func TestOpenAIStreamMetadataAndKeepaliveBeforeOverloadFailOver(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	largeMetadata := strings.Repeat("x", 16*1024)
 	stream := strings.Join([]string{
+		"event: response.queued",
+		`data: {"type":"response.queued","response":{"id":"resp_1"}}`,
+		"",
+		"event: response.metadata",
+		`data: {"type":"response.metadata","response":{"id":"resp_1","metadata":{"moderation":"pending"}}}`,
+		"",
 		"event: response.created",
 		`data: {"type":"response.created","response":{"id":"resp_1","metadata":{"padding":"` + largeMetadata + `"}}}`,
 		"",
