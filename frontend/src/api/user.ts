@@ -67,6 +67,8 @@ export interface OnboardingDiscordConfig {
 }
 
 export interface OnboardingConfig {
+  account_template_id?: number
+  pool_reset?: { enabled: boolean; channel_id: string; message: string }
   enabled: boolean
   discord: OnboardingDiscordConfig
   subscription_rules: Record<string, { group_id: number; validity_days: number }>
@@ -76,6 +78,7 @@ export interface OnboardingConfig {
 }
 
 export interface OnboardingUserOverview {
+  account_setup_message?: string
   discord?: OnboardingDiscordBinding
   discord_required: boolean
   accounts: OnboardingAccountSummary[]

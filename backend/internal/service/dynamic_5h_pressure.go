@@ -98,7 +98,6 @@ type Dynamic5hAuditLog struct {
 	ActorEmail  string               `json:"actor_email"`
 	UserEmail   string               `json:"user_email"`
 	Action      string               `json:"action"`
-	Reason      string               `json:"-"`
 	BeforeUsage *float64             `json:"before_usage,omitempty"`
 	AfterUsage  *float64             `json:"after_usage,omitempty"`
 	OldPolicy   *Dynamic5hUserPolicy `json:"old_policy,omitempty"`
@@ -109,8 +108,8 @@ type Dynamic5hAuditLog struct {
 type Dynamic5hPolicyRepository interface {
 	GetUserPolicy(context.Context, int64) (Dynamic5hUserPolicy, bool, error)
 	ListUserPolicies(context.Context) (map[int64]Dynamic5hUserPolicy, error)
-	UpsertUserPolicy(context.Context, int64, Dynamic5hUserPolicy, int64, string) error
-	RecordUsageReset(context.Context, int64, int64, string, float64, float64) error
+	UpsertUserPolicy(context.Context, int64, Dynamic5hUserPolicy, int64) error
+	RecordUsageReset(context.Context, int64, int64, float64, float64) error
 	ListAuditLogs(context.Context, int) ([]Dynamic5hAuditLog, error)
 }
 
@@ -597,7 +596,7 @@ func (s *Dynamic5hPressureService) SetUserPolicy(ctx context.Context, userID int
 	if len(actorIDs) > 0 {
 		actorID = actorIDs[0]
 	}
-	if err := s.policyRepo.UpsertUserPolicy(ctx, userID, policy, actorID, ""); err != nil {
+	if err := s.policyRepo.UpsertUserPolicy(ctx, userID, policy, actorID); err != nil {
 		return err
 	}
 	s.policyMu.Lock()

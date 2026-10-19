@@ -132,7 +132,7 @@ func (s *Dynamic5hPressureService) subscriptionQuotaAdminOverview(ctx context.Co
 	return overview
 }
 
-func (s *Dynamic5hPressureService) resetSubscriptionQuota(ctx context.Context, userID int64, actorAndReason ...any) error {
+func (s *Dynamic5hPressureService) resetSubscriptionQuota(ctx context.Context, userID, actorID int64) error {
 	if userID <= 0 {
 		return fmt.Errorf("invalid user id")
 	}
@@ -140,9 +140,5 @@ func (s *Dynamic5hPressureService) resetSubscriptionQuota(ctx context.Context, u
 	if err != nil {
 		return err
 	}
-	var actorID int64
-	if len(actorAndReason) > 0 {
-		actorID, _ = actorAndReason[0].(int64)
-	}
-	return s.policyRepo.RecordUsageReset(ctx, userID, actorID, "", status.UsageUSD, 0)
+	return s.policyRepo.RecordUsageReset(ctx, userID, actorID, status.UsageUSD, 0)
 }

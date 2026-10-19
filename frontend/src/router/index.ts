@@ -233,7 +233,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: '5h Fair Usage',
+      title: 'Service Center',
       titleKey: 'dynamic5h.workspaceTitle',
       descriptionKey: 'dynamic5h.workspaceDescription'
     }

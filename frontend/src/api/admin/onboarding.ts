@@ -36,6 +36,11 @@ export async function bindDiscordMember(userId: number, discordUserId: string): 
   await apiClient.post('/admin/onboarding/discord/bind', { user_id: userId, discord_user_id: discordUserId })
 }
 
-export const onboardingAPI = { getOverview, getConfig, updateConfig, bindAccount, unbindAccount, getDiscordMembers, bindDiscordMember }
+export async function getDiscordChannels(): Promise<Array<{ id: string; name: string }>> {
+  const { data } = await apiClient.get<Array<{ id: string; name: string }>>('/admin/onboarding/discord/channels')
+  return data
+}
+
+export const onboardingAPI = { getOverview, getConfig, updateConfig, bindAccount, unbindAccount, getDiscordMembers, bindDiscordMember, getDiscordChannels }
 export default onboardingAPI
 

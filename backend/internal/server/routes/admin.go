@@ -141,6 +141,7 @@ func registerOnboardingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		onboarding.GET("/config", h.Admin.Onboarding.GetAdminConfig)
 		onboarding.PUT("/config", h.Admin.Onboarding.UpdateAdminConfig)
 		onboarding.GET("/discord/members", h.Admin.Onboarding.ListDiscordMembers)
+		onboarding.GET("/discord/channels", h.Admin.Onboarding.ListDiscordChannels)
 		onboarding.POST("/discord/bind", h.Admin.Onboarding.BindDiscordMember)
 		onboarding.POST("/accounts/:id/bind", h.Admin.Onboarding.BindAccount)
 		onboarding.DELETE("/accounts/:id/bind", h.Admin.Onboarding.UnbindAccount)

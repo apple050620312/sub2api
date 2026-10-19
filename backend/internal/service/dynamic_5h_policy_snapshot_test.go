@@ -35,7 +35,7 @@ func (r *dynamic5hSnapshotRepository) GetUserPolicy(context.Context, int64) (Dyn
 	panic("per-user DB reads must not occur")
 }
 
-func (r *dynamic5hSnapshotRepository) UpsertUserPolicy(_ context.Context, userID int64, policy Dynamic5hUserPolicy, _ int64, _ string) error {
+func (r *dynamic5hSnapshotRepository) UpsertUserPolicy(_ context.Context, userID int64, policy Dynamic5hUserPolicy, _ int64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.policies[userID] = policy

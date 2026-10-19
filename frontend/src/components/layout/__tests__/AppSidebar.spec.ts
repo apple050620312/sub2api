@@ -81,12 +81,12 @@ describe('AppSidebar subscription feature flag', () => {
   })
 })
 
-describe('AppSidebar Dynamic 5h icon', () => {
+describe('AppSidebar service center icon', () => {
   it('uses a dedicated icon that no unrelated navigation entry reuses', () => {
-    expect(componentSource).toContain('const Dynamic5hIcon = {')
-    expect(componentSource).toMatch(/path: '\/service-center'[^\n]*icon: Dynamic5hIcon/)
-    expect(componentSource).toMatch(/path: '\/admin\/service-center'[^\n]*icon: Dynamic5hIcon/)
+    expect(componentSource).toContain('const ServiceCenterIcon = {')
+    expect(componentSource).toMatch(/path: '\/service-center'[^\n]*icon: ServiceCenterIcon/)
+    expect(componentSource).toMatch(/path: '\/admin\/service-center'[^\n]*icon: ServiceCenterIcon/)
     expect(componentSource).not.toMatch(/path: '\/(admin\/)?onboarding'/)
-    expect(componentSource.match(/icon: Dynamic5hIcon/g)).toHaveLength(2)
+    expect(componentSource.match(/icon: ServiceCenterIcon/g)).toHaveLength(2)
   })
 })

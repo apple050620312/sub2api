@@ -206,6 +206,7 @@ func ProvideHandlers(
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
+	_ *service.ServicePoolResetService,
 	dynamic5hPressure *service.Dynamic5hPressureService,
 ) *Handlers {
 	userHandler.SetDynamic5hPressureService(dynamic5hPressure)

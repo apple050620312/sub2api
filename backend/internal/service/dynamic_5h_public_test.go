@@ -58,7 +58,9 @@ func TestDynamic5hPublicPoolReportsAccountReadFailure(t *testing.T) {
 }
 
 func TestDynamic5hAuditDoesNotExposeHistoricalReasons(t *testing.T) {
-	encoded, err := json.Marshal(Dynamic5hAuditLog{Reason: "private historical reason", Action: "policy_update"})
+	var audit Dynamic5hAuditLog
+	require.NoError(t, json.Unmarshal([]byte(`{"reason":"private historical reason","action":"policy_update"}`), &audit))
+	encoded, err := json.Marshal(audit)
 	require.NoError(t, err)
 	require.NotContains(t, string(encoded), "reason")
 }

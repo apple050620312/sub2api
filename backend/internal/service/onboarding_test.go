@@ -26,8 +26,9 @@ func TestOnboardingOpenAIUsesConfiguredOrNativeCallback(t *testing.T) {
 			client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, db)))
 			t.Cleanup(func() { _ = client.Close() })
 			cfg := &config.Config{JWT: config.JWTConfig{Secret: "onboarding-unit-test-secret"}}
-			svc := NewOnboardingService(client, nil, NewOpenAIOAuthService(nil, nil), nil, cfg, nil)
-			payload, err := json.Marshal(OnboardingConfig{Enabled: true, OpenAIRedirectURI: callback})
+			admin := &onboardingTestAdmin{accounts: []Account{{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth}}}
+			svc := NewOnboardingService(client, admin, NewOpenAIOAuthService(nil, nil), nil, cfg, nil)
+			payload, err := json.Marshal(OnboardingConfig{Enabled: true, AccountTemplateID: 42, OpenAIRedirectURI: callback})
 			require.NoError(t, err)
 			mock.ExpectQuery("SELECT config FROM onboarding_config").WillReturnRows(sqlmock.NewRows([]string{"config"}).AddRow(payload)).RowsWillBeClosed()
 			now := time.Now().UTC()

@@ -125,6 +125,8 @@ func (h *OnboardingHandler) CompleteOpenAI(c *gin.Context) {
 }
 
 type onboardingConfigRequest struct {
+	AccountTemplateID   int64                                         `json:"account_template_id"`
+	PoolReset           service.ServicePoolResetConfig                `json:"pool_reset"`
 	Enabled             *bool                                         `json:"enabled"`
 	Discord             onboardingDiscordConfigRequest                `json:"discord"`
 	SubscriptionRules   map[string]service.OnboardingSubscriptionRule `json:"subscription_rules"`
@@ -159,6 +161,15 @@ func (h *OnboardingHandler) GetAdminConfig(c *gin.Context) {
 	response.Success(c, value)
 }
 
+func (h *OnboardingHandler) ListDiscordChannels(c *gin.Context) {
+	channels, err := h.service.ListDiscordChannels(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, channels)
+}
+
 func (h *OnboardingHandler) UpdateAdminConfig(c *gin.Context) {
 	var req onboardingConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -166,6 +177,8 @@ func (h *OnboardingHandler) UpdateAdminConfig(c *gin.Context) {
 		return
 	}
 	next := service.OnboardingConfig{Enabled: true, SubscriptionRules: req.SubscriptionRules, OpenAIRedirectURI: req.OpenAIRedirectURI, CCSwitchDownloadURL: req.CCSwitchDownloadURL, Discord: service.OnboardingDiscordConfig{ClientID: req.Discord.ClientID, ClientSecret: req.Discord.ClientSecret, BotToken: req.Discord.BotToken, GuildID: req.Discord.GuildID, RoleID: req.Discord.RoleID, RedirectURI: req.Discord.RedirectURI}}
+	next.AccountTemplateID = req.AccountTemplateID
+	next.PoolReset = req.PoolReset
 	if req.Enabled != nil {
 		next.Enabled = *req.Enabled
 	}

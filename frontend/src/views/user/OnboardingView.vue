@@ -32,7 +32,7 @@
           </div>
           <div class="mt-4 flex flex-wrap gap-3">
             <button class="btn btn-primary" :disabled="busy || !overview?.ready_for_account" @click="startOpenAI">打开 OpenAI 授权</button>
-            <span v-if="!overview?.ready_for_account" class="self-center text-sm text-amber-600">请先完成 Discord 绑定。</span>
+            <span v-if="!overview?.ready_for_account" class="self-center text-sm text-amber-600">{{ overview?.discord?.status === 'active' ? overview.account_setup_message || '账号接入暂未配置，请联系管理员。' : '请先完成 Discord 绑定。' }}</span>
           </div>
           <div v-if="oauthStart" class="mt-5 space-y-3 rounded-xl bg-gray-50 p-4 dark:bg-dark-700/50">
             <p class="text-sm text-gray-700 dark:text-gray-200">授权完成后，把回调地址粘贴到下面，系统会自动提取 code 和 state。</p>

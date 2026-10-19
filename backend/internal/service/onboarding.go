@@ -61,6 +61,8 @@ type OnboardingSubscriptionRule struct {
 // OnboardingConfig contains all public onboarding configuration.
 type OnboardingConfig struct {
 	Enabled                     bool                                  `json:"enabled"`
+	AccountTemplateID           int64                                 `json:"account_template_id"`
+	PoolReset                   ServicePoolResetConfig                `json:"pool_reset"`
 	Discord                     OnboardingDiscordConfig               `json:"discord"`
 	SubscriptionRules           map[string]OnboardingSubscriptionRule `json:"subscription_rules"`
 	SubscriptionRulesNeedReview bool                                  `json:"subscription_rules_need_review"`
@@ -113,14 +115,15 @@ type OnboardingSubscriptionSummary struct {
 }
 
 type OnboardingUserOverview struct {
-	Discord         *OnboardingDiscordBinding       `json:"discord,omitempty"`
-	DiscordRequired bool                            `json:"discord_required"`
-	Accounts        []OnboardingAccountSummary      `json:"accounts"`
-	AccountUnits    int                             `json:"account_units"`
-	ReadyForAccount bool                            `json:"ready_for_account"`
-	ReadyForKey     bool                            `json:"ready_for_key"`
-	Config          OnboardingConfig                `json:"config"`
-	Subscriptions   []OnboardingSubscriptionSummary `json:"subscriptions"`
+	AccountSetupMessage string                          `json:"account_setup_message,omitempty"`
+	Discord             *OnboardingDiscordBinding       `json:"discord,omitempty"`
+	DiscordRequired     bool                            `json:"discord_required"`
+	Accounts            []OnboardingAccountSummary      `json:"accounts"`
+	AccountUnits        int                             `json:"account_units"`
+	ReadyForAccount     bool                            `json:"ready_for_account"`
+	ReadyForKey         bool                            `json:"ready_for_key"`
+	Config              OnboardingConfig                `json:"config"`
+	Subscriptions       []OnboardingSubscriptionSummary `json:"subscriptions"`
 }
 
 type OnboardingAdminUser struct {
@@ -136,6 +139,8 @@ type OnboardingAdminOverview struct {
 	Config             OnboardingConfig           `json:"config"`
 	Users              []OnboardingAdminUser      `json:"users"`
 	UnassignedAccounts []OnboardingAccountSummary `json:"unassigned_accounts"`
+	TemplateAccounts   []OnboardingAccountSummary `json:"template_accounts"`
+	PoolResetStatus    *ServicePoolResetStatus    `json:"pool_reset_status,omitempty"`
 }
 
 type OnboardingOAuthStart struct {
@@ -236,6 +241,17 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	if err != nil {
 		return OnboardingConfig{}, err
 	}
+	if next.AccountTemplateID < 0 {
+		return OnboardingConfig{}, ErrOnboardingTemplateRequired
+	}
+	if next.AccountTemplateID > 0 {
+		if _, err := s.accountTemplate(ctx, next.AccountTemplateID); err != nil {
+			return OnboardingConfig{}, err
+		}
+	}
+	if err := validateServicePoolResetConfig(next.PoolReset, next.Discord, current.Discord); err != nil {
+		return OnboardingConfig{}, err
+	}
 	if next.SubscriptionRules == nil {
 		next.SubscriptionRules = current.SubscriptionRules
 	}
@@ -259,6 +275,9 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	}
 	if strings.TrimSpace(next.Discord.BotToken) == "" {
 		next.Discord.BotToken = current.Discord.BotToken
+	}
+	if err := s.validateResetChannel(ctx, next.PoolReset, next.Discord); err != nil {
+		return OnboardingConfig{}, err
 	}
 	stored := onboardingStoredConfig{OnboardingConfig: next}
 	if next.Discord.ClientSecret != "" {
@@ -289,6 +308,11 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	}
 	defer func() { _ = tx.Rollback() }()
 	ctx = dbent.NewTxContext(ctx, tx)
+	if next.PoolReset.Enabled != current.PoolReset.Enabled {
+		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_state SET state='{}'::jsonb, updated_at=NOW() WHERE id=1`); err != nil {
+			return OnboardingConfig{}, err
+		}
+	}
 	if _, err := tx.Client().ExecContext(ctx, `UPDATE onboarding_config SET config = $1::jsonb, updated_at = NOW() WHERE id = 1`, payload); err != nil {
 		return OnboardingConfig{}, err
 	}
@@ -534,11 +558,23 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 			readyForKey = readyForKey || sub.IsActive()
 		}
 	}
+	userConfig := defaultOnboardingConfig()
+	userConfig.Enabled, userConfig.CCSwitchDownloadURL = stored.Enabled, stored.CCSwitchDownloadURL
+	templateReady := false
+	if stored.AccountTemplateID > 0 {
+		_, templateErr := s.accountTemplate(ctx, stored.AccountTemplateID)
+		templateReady = templateErr == nil
+	}
+	setupMessage := ""
+	if !templateReady {
+		setupMessage = "管理员尚未指定 GPT 模板账号，请联系管理员完成服务配置。"
+	}
 	return &OnboardingUserOverview{
-		Discord: binding, DiscordRequired: true, Accounts: summaries, AccountUnits: units,
-		ReadyForAccount: binding != nil && binding.Status == "active",
+		AccountSetupMessage: setupMessage,
+		Discord:             binding, DiscordRequired: true, Accounts: summaries, AccountUnits: units,
+		ReadyForAccount: binding != nil && binding.Status == "active" && templateReady,
 		ReadyForKey:     binding != nil && binding.Status == "active" && readyForKey,
-		Config:          publicOnboardingConfig(stored),
+		Config:          userConfig,
 		Subscriptions:   subscriptions,
 	}, nil
 }
@@ -711,6 +747,9 @@ func (s *OnboardingService) StartOpenAI(ctx context.Context, userID int64, _ str
 	if err != nil {
 		return nil, err
 	}
+	if _, err := s.accountTemplate(ctx, stored.AccountTemplateID); err != nil {
+		return nil, err
+	}
 	redirectURI := strings.TrimSpace(stored.OpenAIRedirectURI)
 	if redirectURI == "" {
 		redirectURI = openai.DefaultRedirectURI
@@ -734,6 +773,10 @@ func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, se
 	if err := s.verifyState(onboardingState, "openai", userID); err != nil {
 		return nil, err
 	}
+	template, err := s.accountTemplate(ctx, stored.AccountTemplateID)
+	if err != nil {
+		return nil, err
+	}
 	redirectURI := strings.TrimSpace(stored.OpenAIRedirectURI)
 	if redirectURI == "" {
 		redirectURI = openai.DefaultRedirectURI
@@ -754,7 +797,9 @@ func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, se
 			return err
 		}
 		var createErr error
-		account, createErr = s.admin.CreateAccount(ctx, &CreateAccountInput{Name: name, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: s.oauth.BuildAccountCredentials(tokenInfo), Extra: extra, Concurrency: 3, Priority: 50, SkipDefaultGroupBind: true})
+		input := onboardingAccountFromTemplate(template, s.oauth.BuildAccountCredentials(tokenInfo), extra)
+		input.Name = name
+		account, createErr = s.admin.CreateAccount(ctx, input)
 		return createErr
 	})
 	if err != nil {
@@ -996,6 +1041,16 @@ func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdmin
 		bindingMap[bindings[i].UserID] = &bindings[i]
 	}
 	overview := &OnboardingAdminOverview{Config: publicOnboardingConfig(stored), Users: make([]OnboardingAdminUser, 0, len(users)), UnassignedAccounts: make([]OnboardingAccountSummary, 0)}
+	overview.TemplateAccounts = make([]OnboardingAccountSummary, 0)
+	for _, account := range allAccounts {
+		if validOnboardingTemplate(&account) {
+			overview.TemplateAccounts = append(overview.TemplateAccounts, onboardingAccountSummary(account))
+		}
+	}
+	overview.PoolResetStatus, err = s.poolResetStatus(ctx)
+	if err != nil {
+		return nil, err
+	}
 	for _, user := range users {
 		summaries := accountsByOwner[user.ID]
 		if summaries == nil {

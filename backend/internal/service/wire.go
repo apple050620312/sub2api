@@ -221,6 +221,12 @@ func ProvideOpenAIQuotaAutoResetService(
 	return service
 }
 
+func ProvideServicePoolResetService(onboarding *OnboardingService, quota *OpenAIQuotaService) *ServicePoolResetService {
+	svc := NewServicePoolResetService(onboarding, quota)
+	svc.Start()
+	return svc
+}
+
 func ProvideAccountUsageService(
 	accountRepo AccountRepository,
 	usageLogRepo UsageLogRepository,
@@ -909,6 +915,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideOpenAIQuotaAutoResetService,
+	ProvideServicePoolResetService,
 	ProvideGrokQuotaService,
 	ProvideCNProviderQuotaService,
 	ProvideCNProviderBalanceService,

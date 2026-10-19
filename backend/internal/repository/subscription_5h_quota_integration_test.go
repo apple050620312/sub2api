@@ -75,6 +75,18 @@ func TestDynamic5hSubscriptionRollingSpending(t *testing.T) {
 	quota, err = repo.ReadSubscription5hQuota(ctx, user.ID, now)
 	require.NoError(t, err)
 	require.Equal(t, 9.0, quota.UsageUSD)
+	eventID := uuid.NewString()
+	_, err = integrationDB.ExecContext(ctx, `INSERT INTO service_pool_reset_events (id,event_key,kind,observed_accounts,total_accounts,reset_at,notification_state) VALUES($1,$1,'windows',3,3,$2,'sent')`, eventID, now.Add(-30*time.Minute))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM service_pool_reset_events WHERE id=$1`, eventID)
+	})
+	quota, err = repo.ReadSubscription5hQuota(ctx, user.ID, now)
+	require.NoError(t, err)
+	require.Zero(t, quota.UsageUSD, "global reset establishes a durable cutoff without deleting usage records")
+	var logCount int
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_logs WHERE user_id=$1`, user.ID).Scan(&logCount))
+	require.Equal(t, 5, logCount)
 	_, err = integrationDB.ExecContext(ctx, "UPDATE user_subscriptions SET expires_at=$2 WHERE id=$1", subscription.ID, now)
 	require.NoError(t, err)
 	quota, err = repo.ReadSubscription5hQuota(ctx, user.ID, now)

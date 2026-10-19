@@ -22,5 +22,17 @@ export interface OnboardingAdminOverview {
   config: OnboardingConfig
   users: OnboardingAdminUser[]
   unassigned_accounts: OnboardingAccountSummary[]
+  template_accounts?: OnboardingAccountSummary[]
+  pool_reset_status?: {
+    checked_at?: string
+    total_accounts: number
+    fresh_accounts: number
+    pending_accounts: number
+    phase: string
+    last_reset_at?: string
+    last_reset_kind?: string
+    affected_subscriptions: number
+    notification_state?: string
+  }
 }
 

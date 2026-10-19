@@ -21,8 +21,9 @@ func (r *dynamic5hPolicyRepository) ReadSubscription5hQuota(ctx context.Context,
   SELECT created_at, SUM(GREATEST(actual_cost, 0)) AS amount
   FROM usage_logs
   WHERE user_id=$1 AND created_at>$2-INTERVAL '5 hours' AND created_at<=$2
-    AND created_at>COALESCE((SELECT MAX(created_at) FROM dynamic_5h_audit_logs
-      WHERE user_id=$1 AND action='usage_reset'), '-infinity'::timestamptz)
+    AND created_at>GREATEST(COALESCE((SELECT MAX(created_at) FROM dynamic_5h_audit_logs
+      WHERE user_id=$1 AND action='usage_reset'), '-infinity'::timestamptz),
+      COALESCE((SELECT MAX(reset_at) FROM service_pool_reset_events WHERE reset_at<=$2), '-infinity'::timestamptz))
     AND actual_cost>0
   GROUP BY created_at
 ), rolling AS (

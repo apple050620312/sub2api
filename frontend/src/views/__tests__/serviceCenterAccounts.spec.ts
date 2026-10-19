@@ -7,11 +7,11 @@ vi.mock('vue-i18n', async () => {
   return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
 })
 
-const api = vi.hoisted(() => ({ userOverview: vi.fn(), adminOverview: vi.fn(), pause: vi.fn(), remove: vi.fn(), bindAccount: vi.fn(), bindDiscord: vi.fn(), members: vi.fn(), showError: vi.fn(), listKeys: vi.fn(), createKey: vi.fn(), updateConfig: vi.fn() }))
+const api = vi.hoisted(() => ({ userOverview: vi.fn(), adminOverview: vi.fn(), pause: vi.fn(), remove: vi.fn(), bindAccount: vi.fn(), bindDiscord: vi.fn(), members: vi.fn(), channels: vi.fn(), showError: vi.fn(), listKeys: vi.fn(), createKey: vi.fn(), updateConfig: vi.fn() }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ replace: vi.fn() }) }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: api.showError, showSuccess: vi.fn() }) }))
 vi.mock('@/api/user', () => ({ getOnboardingOverview: api.userOverview, setOnboardingAccountPaused: api.pause, deleteOnboardingAccount: api.remove }))
-vi.mock('@/api/admin/onboarding', () => ({ onboardingAPI: { getOverview: api.adminOverview, bindAccount: api.bindAccount, bindDiscordMember: api.bindDiscord, getDiscordMembers: api.members, updateConfig: api.updateConfig } }))
+vi.mock('@/api/admin/onboarding', () => ({ onboardingAPI: { getOverview: api.adminOverview, bindAccount: api.bindAccount, bindDiscordMember: api.bindDiscord, getDiscordMembers: api.members, getDiscordChannels: api.channels, updateConfig: api.updateConfig } }))
 vi.mock('@/api/admin/groups', () => ({ getAll: vi.fn().mockResolvedValue([{ id: 9, name: 'Plus 周额度', platform: 'openai', status: 'active', subscription_type: 'subscription' }]) }))
 vi.mock('@/api/groups', () => ({ userGroupsAPI: { getAvailable: vi.fn().mockResolvedValue([{ id: 9, name: 'Plus 周额度', platform: 'openai', status: 'active', subscription_type: 'subscription' }]) } }))
 vi.mock('@/api/keys', () => ({ keysAPI: { create: api.createKey, list: api.listKeys } }))
@@ -29,11 +29,37 @@ beforeEach(() => {
   api.userOverview.mockResolvedValue({ accounts: [account], account_units: 1, subscriptions: [], ready_for_key: true, ready_for_account: true, config })
   api.adminOverview.mockResolvedValue({ config, users: [{ user_id: 7, email: 'owner@example.com', username: 'Owner', accounts: [], account_units: 0 }], unassigned_accounts: [account] })
   api.members.mockResolvedValue([{ id: '12345', username: 'discord-user', display_name: 'Discord 昵称' }])
+  api.channels.mockResolvedValue([{ id: '987654', name: '额度通知' }])
   api.listKeys.mockResolvedValue({ items: [], total: 0 })
   api.updateConfig.mockResolvedValue(config)
 })
 
 describe('service center account management', () => {
+  it('confirms a named template and named notification channel before saving', async () => {
+    api.adminOverview.mockResolvedValueOnce({ config: { ...config, account_template_id: 42, pool_reset: { enabled: true, channel_id: '987654', message: '全员配额已恢复' } }, users: [], unassigned_accounts: [], template_accounts: [account] })
+    const wrapper = mount(AdminOnboardingView, { global })
+    await flushPromises()
+    const selector = wrapper.findAllComponents(Select).find(select => select.props('ariaLabel') === '指定模板账号')!
+    expect(selector.props('options')).toContainEqual({ value: 42, label: '共享 GPT Plus · gpt@example.com' })
+    await wrapper.findAll('button').find(button => button.text() === '保存配置')!.trigger('click')
+    expect(api.updateConfig).not.toHaveBeenCalled()
+    expect(wrapper.findComponent(ConfirmDialog).props('message')).toContain('共享 GPT Plus · gpt@example.com')
+    expect(wrapper.findComponent(ConfirmDialog).props('message')).toContain('#额度通知')
+    expect(wrapper.findComponent(ConfirmDialog).props('message')).not.toContain('987654')
+    wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
+    await flushPromises()
+    expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ account_template_id: 42, pool_reset: { enabled: true, channel_id: '987654', message: '全员配额已恢复' } }))
+    wrapper.unmount()
+  })
+
+  it('explains that account onboarding needs administrator configuration after Discord is bound', async () => {
+    api.userOverview.mockResolvedValueOnce({ accounts: [], subscriptions: [], discord: { status: 'active', discord_username: '测试成员' }, account_units: 0, ready_for_key: false, ready_for_account: false, account_setup_message: '管理员尚未指定 GPT 模板账号。', config })
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    expect(wrapper.text()).toContain('管理员尚未指定 GPT 模板账号。')
+    expect(wrapper.findAll('button').find(button => button.text() === '打开 OpenAI 授权')!.attributes('disabled')).toBeDefined()
+    wrapper.unmount()
+  })
   it('completes step three using an existing key and imports it in step four', async () => {
     api.listKeys.mockResolvedValue({ items: [existingKey], total: 1 })
     const wrapper = mount(UserOnboardingView, { global })
