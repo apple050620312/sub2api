@@ -570,6 +570,14 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 // 注意：该函数用于 LinuxDo OAuth 登录场景（不同于上游账号的 OAuth，例如 Claude/OpenAI/Gemini）。
 // 为了满足现有数据库约束（需要密码哈希），新用户会生成随机密码并进行哈希保存。
 func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username string) (string, *User, error) {
+	return s.loginOrRegisterOAuth(ctx, email, username, "")
+}
+
+func (s *AuthService) LoginOrRegisterDiscordEmail(ctx context.Context, email, username string) (string, *User, error) {
+	return s.loginOrRegisterOAuth(ctx, strings.ToLower(strings.TrimSpace(email)), username, "discord")
+}
+
+func (s *AuthService) loginOrRegisterOAuth(ctx context.Context, email, username, signupSource string) (string, *User, error) {
 	email = strings.TrimSpace(email)
 	if email == "" || len(email) > 255 {
 		return "", nil, infraerrors.BadRequest("INVALID_EMAIL", "invalid email")
@@ -586,8 +594,11 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 	user, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
+			if signupSource == "discord" && s.settingService != nil && s.settingService.IsBackendModeEnabled(ctx) {
+				return "", nil, ErrRegDisabled
+			}
 			// OAuth 首次登录视为注册（fail-close：settingService 未配置时不允许注册）
-			if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
+			if signupSource != "discord" && (s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx)) {
 				return "", nil, ErrRegDisabled
 			}
 
@@ -601,7 +612,9 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 				return "", nil, fmt.Errorf("hash password: %w", err)
 			}
 
-			signupSource := inferLegacySignupSource(email)
+			if signupSource == "" {
+				signupSource = inferLegacySignupSource(email)
+			}
 			grantPlan := s.resolveSignupGrantPlan(ctx, signupSource)
 			var defaultRPMLimit int
 			if s.settingService != nil {

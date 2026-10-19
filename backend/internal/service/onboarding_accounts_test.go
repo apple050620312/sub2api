@@ -60,6 +60,9 @@ func (admin *onboardingTestAdmin) UpdateAccount(ctx context.Context, accountID i
 		account.Status = input.Status
 		admin.updates++
 	}
+	if input.Credentials != nil {
+		account.Credentials = input.Credentials
+	}
 	return account, nil
 }
 
@@ -172,7 +175,7 @@ func TestOnboardingAccountMutationsCheckOwnershipAndReconcile(t *testing.T) {
 			admin := &onboardingTestAdmin{accounts: []Account{account}}
 			now := time.Now()
 			repo := &onboardingTestSubscriptions{subs: []UserSubscription{{ID: 1, UserID: 7, GroupID: 9, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour), Status: SubscriptionStatusActive, Notes: onboardingManagedNotes + ":account"}}}
-			svc := NewOnboardingService(client, admin, nil, &SubscriptionService{userSubRepo: repo}, nil, nil)
+			svc := NewOnboardingService(client, admin, nil, &SubscriptionService{userSubRepo: repo}, nil, nil, nil)
 			mock.ExpectBegin()
 			mock.ExpectExec("SELECT id FROM onboarding_config").WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectExec("SELECT id FROM users").WithArgs(int64(7)).WillReturnResult(sqlmock.NewResult(0, 1))

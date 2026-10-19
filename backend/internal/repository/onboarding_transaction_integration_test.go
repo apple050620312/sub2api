@@ -46,8 +46,13 @@ func (admin *onboardingTierTestAdmin) UpdateAccount(ctx context.Context, account
 	if err != nil {
 		return nil, err
 	}
-	if input.Status != "" {
-		account.Status = input.Status
+	if input.Credentials != nil {
+		account.Credentials = input.Credentials
+	}
+	if input.Status != "" || input.Credentials != nil {
+		if input.Status != "" {
+			account.Status = input.Status
+		}
 		if err := admin.accounts.Update(ctx, account); err != nil {
 			return nil, err
 		}
@@ -67,7 +72,7 @@ func TestOnboardingCountTierLifecycle(t *testing.T) {
 	subRepo := NewUserSubscriptionRepository(client)
 	subService := service.NewSubscriptionService(NewGroupRepository(client, integrationDB), subRepo, nil, client, nil)
 	t.Cleanup(subService.Stop)
-	svc := service.NewOnboardingService(client, &onboardingTierTestAdmin{accounts: accountRepo}, nil, subService, nil, nil)
+	svc := service.NewOnboardingService(client, &onboardingTierTestAdmin{accounts: accountRepo}, nil, subService, nil, nil, nil)
 	user := mustCreateUser(t, client, &service.User{Email: uuid.NewString() + "@example.com"})
 	var originalConfig []byte
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT config FROM onboarding_config WHERE id=1`).Scan(&originalConfig))

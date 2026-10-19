@@ -11,11 +11,13 @@ import (
 )
 
 type OnboardingHandler struct {
-	service *service.OnboardingService
+	service  *service.OnboardingService
+	auth     *service.AuthService
+	settings *service.SettingService
 }
 
-func NewOnboardingHandler(onboarding *service.OnboardingService) *OnboardingHandler {
-	return &OnboardingHandler{service: onboarding}
+func NewOnboardingHandler(onboarding *service.OnboardingService, auth *service.AuthService, settings *service.SettingService) *OnboardingHandler {
+	return &OnboardingHandler{service: onboarding, auth: auth, settings: settings}
 }
 
 func onboardingSubject(c *gin.Context) (middleware.AuthSubject, bool) {
@@ -117,6 +119,47 @@ func (h *OnboardingHandler) CompleteOpenAI(c *gin.Context) {
 		return
 	}
 	account, err := h.service.CompleteOpenAI(c.Request.Context(), subject.UserID, req.SessionID, req.Code, req.OAuthState, req.OnboardingState, req.RedirectURI)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"account_id": account.ID, "name": account.Name, "plan_type": account.GetCredential("plan_type")})
+}
+
+func (h *OnboardingHandler) StartOwnedAccountReauthorization(c *gin.Context) {
+	subject, ok := onboardingSubject(c)
+	if !ok {
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "账号无效")
+		return
+	}
+	result, err := h.service.StartOwnedAccountReauthorization(c.Request.Context(), subject.UserID, accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *OnboardingHandler) CompleteOwnedAccountReauthorization(c *gin.Context) {
+	subject, ok := onboardingSubject(c)
+	if !ok {
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "账号无效")
+		return
+	}
+	var req onboardingOpenAICompleteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "请求格式无效："+err.Error())
+		return
+	}
+	account, err := h.service.CompleteOwnedAccountReauthorization(c.Request.Context(), subject.UserID, accountID, req.SessionID, req.Code, req.OAuthState, req.OnboardingState)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

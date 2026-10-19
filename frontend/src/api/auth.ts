@@ -41,6 +41,35 @@ export interface OAuthLoginStartResponse {
   authorize_url: string
 }
 
+export interface DiscordLoginStatus {
+  enabled: boolean
+  ready: boolean
+}
+
+export interface DiscordLoginStartResponse {
+  authorize_url: string
+}
+
+export interface DiscordLoginCompleteResponse extends OAuthTokenResponse {
+  user: import('@/types').AuthResponse['user']
+  token_type: string
+}
+
+export async function getDiscordLoginStatus(): Promise<DiscordLoginStatus> {
+  const { data } = await apiClient.get<DiscordLoginStatus>('/auth/oauth/discord/status')
+  return data
+}
+
+export async function startDiscordLogin(): Promise<DiscordLoginStartResponse> {
+  const { data } = await apiClient.post<DiscordLoginStartResponse>('/auth/oauth/discord/start')
+  return data
+}
+
+export async function completeDiscordLogin(code: string, state: string): Promise<DiscordLoginCompleteResponse> {
+  const { data } = await apiClient.post<DiscordLoginCompleteResponse>('/auth/oauth/discord/complete', { code, state })
+  return data
+}
+
 export function buildOAuthLoginStartURL(request: OAuthLoginStart): string {
   const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
   const normalized = apiBase.replace(/\/$/, '')
@@ -694,6 +723,9 @@ export const authAPI = {
   getTokenExpiresAt,
   clearAuthToken,
   getPublicSettings,
+  getDiscordLoginStatus,
+  startDiscordLogin,
+  completeDiscordLogin,
   sendVerifyCode,
   sendPendingOAuthVerifyCode,
   validatePromoCode,

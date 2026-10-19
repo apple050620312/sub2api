@@ -1,6 +1,7 @@
 <template>
   <AuthLayout>
-    <div class="space-y-6">
+    <DiscordLoginButton v-if="publicSettingsLoaded && discordLoginOnly" :disabled="!publicSettingsLoaded" />
+    <div v-else-if="publicSettingsLoaded" class="space-y-6">
       <!-- Title -->
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -195,9 +196,12 @@
         </div>
       </form>
     </div>
+    <div v-else class="flex min-h-32 items-center justify-center text-sm text-gray-500 dark:text-dark-400">
+      正在加载登录方式…
+    </div>
 
     <!-- Footer -->
-    <template v-if="!backendModeEnabled && publicSettingsLoaded && registrationEnabled" #footer>
+    <template v-if="!discordLoginOnly && !backendModeEnabled && publicSettingsLoaded && registrationEnabled" #footer>
       <p class="text-gray-500 dark:text-dark-400">
         {{ t('auth.dontHaveAccount') }}
         <router-link
@@ -226,6 +230,7 @@ import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
+import DiscordLoginButton from '@/components/auth/DiscordLoginButton.vue'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import DingTalkOAuthSection from '@/components/auth/DingTalkOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
@@ -268,6 +273,7 @@ const passkeyLoading = ref<boolean>(false)
 const errorMessage = ref<string>('')
 const showPassword = ref<boolean>(false)
 const publicSettingsLoaded = ref<boolean>(false)
+const discordLoginOnly = ref<boolean>(false)
 
 // Public settings
 const registrationEnabled = ref<boolean>(false)
@@ -383,6 +389,7 @@ onMounted(async () => {
   try {
     const settings = await getPublicSettings()
     registrationEnabled.value = settings.registration_enabled === true
+    discordLoginOnly.value = settings.discord_login_only === true
     turnstileEnabled.value = settings.turnstile_enabled
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true

@@ -209,6 +209,7 @@ export interface LoginAgreementDocument {
 }
 
 export interface PublicSettings {
+  discord_login_only?: boolean
   registration_enabled: boolean
   email_verify_enabled: boolean
   force_email_on_third_party_signup: boolean

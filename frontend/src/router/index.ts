@@ -52,12 +52,8 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/register',
     name: 'Register',
-    component: () => import('@/views/auth/RegisterView.vue'),
-    meta: {
-      requiresAuth: false,
-      title: 'Register',
-      titleKey: 'auth.createAccount'
-    }
+    redirect: to => ({ path: '/login', query: to.query }),
+    meta: { requiresAuth: false, title: 'Register', titleKey: 'auth.createAccount' }
   },
   {
     path: '/email-verify',
@@ -849,6 +845,13 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const callbackState = typeof to.query.state === 'string' ? to.query.state : ''
+  const isDiscordLoginCallback = callbackState.startsWith('discord-login.') && Boolean(to.query.code || to.query.error)
+
+  if (isDiscordLoginCallback && to.path !== '/login') {
+    next({ path: '/login', query: to.query })
+    return
+  }
 
   if (to.path === '/setup') {
     try {
@@ -865,7 +868,7 @@ router.beforeEach(async (to, _from, next) => {
   // If route doesn't require auth, allow access
   if (!requiresAuth) {
     // If already authenticated and trying to access login/register, redirect to appropriate dashboard
-    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register')) {
+    if (authStore.isAuthenticated && (to.path === '/login' || to.path === '/register') && !isDiscordLoginCallback) {
       // In backend mode, non-admin users should NOT be redirected away from login
       // (they are blocked from all protected routes, so redirecting would cause a loop)
       if (appStore.backendModeEnabled && !authStore.isAdmin) {

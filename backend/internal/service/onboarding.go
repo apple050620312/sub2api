@@ -151,17 +151,18 @@ type OnboardingOAuthStart struct {
 }
 
 type OnboardingService struct {
-	db            *dbent.Client
-	admin         AdminService
-	oauth         *OpenAIOAuthService
-	subscriptions *SubscriptionService
-	cfg           *config.Config
-	encryptor     SecretEncryptor
-	httpClient    *http.Client
+	db                    *dbent.Client
+	admin                 AdminService
+	oauth                 *OpenAIOAuthService
+	subscriptions         *SubscriptionService
+	cfg                   *config.Config
+	encryptor             SecretEncryptor
+	httpClient            *http.Client
+	tokenCacheInvalidator TokenCacheInvalidator
 }
 
-func NewOnboardingService(db *dbent.Client, admin AdminService, oauth *OpenAIOAuthService, subscriptions *SubscriptionService, cfg *config.Config, encryptor SecretEncryptor) *OnboardingService {
-	return &OnboardingService{db: db, admin: admin, oauth: oauth, subscriptions: subscriptions, cfg: cfg, encryptor: encryptor, httpClient: &http.Client{Timeout: 12 * time.Second}}
+func NewOnboardingService(db *dbent.Client, admin AdminService, oauth *OpenAIOAuthService, subscriptions *SubscriptionService, cfg *config.Config, encryptor SecretEncryptor, tokenCacheInvalidator TokenCacheInvalidator) *OnboardingService {
+	return &OnboardingService{db: db, admin: admin, oauth: oauth, subscriptions: subscriptions, cfg: cfg, encryptor: encryptor, httpClient: &http.Client{Timeout: 12 * time.Second}, tokenCacheInvalidator: tokenCacheInvalidator}
 }
 
 func defaultOnboardingConfig() OnboardingConfig {

@@ -36,6 +36,9 @@ func backendModeAllowsAuthPath(path string) bool {
 		"/auth/passkey/login/finish",
 		"/auth/logout",
 		"/auth/refresh",
+		"/auth/oauth/discord/status",
+		"/auth/oauth/discord/start",
+		"/auth/oauth/discord/complete",
 	} {
 		if strings.HasSuffix(path, suffix) {
 			return true

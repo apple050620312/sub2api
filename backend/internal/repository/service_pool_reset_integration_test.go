@@ -73,7 +73,7 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 	}
 	subs := service.NewSubscriptionService(NewGroupRepository(client, integrationDB), NewUserSubscriptionRepository(client), nil, client, nil)
 	t.Cleanup(subs.Stop)
-	onboarding := service.NewOnboardingService(client, admin, nil, subs, nil, nil)
+	onboarding := service.NewOnboardingService(client, admin, nil, subs, nil, nil, nil)
 	sampleNow := time.Now().UTC()
 	quota := &poolResetIntegrationQuota{at: sampleNow.Add(-50 * time.Second), used: 40}
 	observer := service.NewServicePoolResetService(onboarding, quota)

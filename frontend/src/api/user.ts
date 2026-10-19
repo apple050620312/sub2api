@@ -304,13 +304,25 @@ export async function startOpenAIOnboarding(redirectUri?: string): Promise<Onboa
   return data
 }
 
-export async function completeOpenAIOnboarding(payload: {
+export interface OnboardingOpenAICompleteRequest {
   session_id: string
   code: string
   state: string
   onboarding_state: string
   redirect_uri?: string
-}): Promise<{ account_id: number; name: string; plan_type: string }> {
+}
+
+export async function startOnboardingAccountReauthorization(accountId: number): Promise<OnboardingOAuthStart> {
+  const { data } = await apiClient.post<OnboardingOAuthStart>(`/user/onboarding/accounts/${accountId}/reauthorize/start`)
+  return data
+}
+
+export async function completeOnboardingAccountReauthorization(accountId: number, payload: OnboardingOpenAICompleteRequest): Promise<{ account_id: number; name: string; plan_type: string }> {
+  const { data } = await apiClient.post<{ account_id: number; name: string; plan_type: string }>(`/user/onboarding/accounts/${accountId}/reauthorize/complete`, payload)
+  return data
+}
+
+export async function completeOpenAIOnboarding(payload: OnboardingOpenAICompleteRequest): Promise<{ account_id: number; name: string; plan_type: string }> {
   const { data } = await apiClient.post<{ account_id: number; name: string; plan_type: string }>('/user/onboarding/openai/complete', payload)
   return data
 }
@@ -337,6 +349,8 @@ export const userAPI = {
   completeDiscordOnboarding,
   startOpenAIOnboarding,
   completeOpenAIOnboarding,
+  startOnboardingAccountReauthorization,
+  completeOnboardingAccountReauthorization,
 }
 
 export default userAPI
