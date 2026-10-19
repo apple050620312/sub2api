@@ -101,6 +101,9 @@ func TestOnboardingCountTierLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE onboarding_config SET config=$1::jsonb WHERE id=1`, payload)
 	require.NoError(t, err)
+	require.ErrorIs(t, svc.BindExistingAccount(ctx, user.ID, accountIDs[0]), service.ErrDiscordBindingRequired)
+	_, err = integrationDB.ExecContext(ctx, `INSERT INTO onboarding_discord_bindings (user_id, discord_user_id, discord_username, status) VALUES ($1, $2, 'tier-test-member', 'active')`, user.ID, strconv.FormatInt(user.ID, 10))
+	require.NoError(t, err)
 	assertTier := func(tier int) []service.UserSubscription {
 		t.Helper()
 		subs, err := subRepo.ListByUserID(ctx, user.ID)
