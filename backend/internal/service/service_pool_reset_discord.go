@@ -68,7 +68,7 @@ func (s *ServicePoolResetService) sendResetNotification(ctx context.Context, sto
 	if stored.Discord.BotToken == "" {
 		return "failed", "", "bot_not_configured"
 	}
-	payload, err := json.Marshal(map[string]any{"content": content, "nonce": nonce, "enforce_nonce": true, "allowed_mentions": map[string]any{"parse": []string{}}})
+	payload, err := json.Marshal(map[string]any{"content": content, "nonce": nonce, "enforce_nonce": true, "allowed_mentions": map[string]any{"parse": []string{"everyone", "users", "roles"}}})
 	if err != nil {
 		return "failed", "", "invalid_message"
 	}

@@ -14,7 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestServicePoolResetDiscordPreservesMessageAndSuppressesMentions(t *testing.T) {
+func TestServicePoolResetDiscordPreservesMessageAndAllowsMentions(t *testing.T) {
+	const content = "配额已恢复\n@everyone @here <@123> <@&456>"
 	onboarding := &OnboardingService{httpClient: &http.Client{Transport: onboardingDiscordTransport(func(request *http.Request) (*http.Response, error) {
 		require.Equal(t, "/api/v10/channels/123456/messages", request.URL.Path)
 		require.Equal(t, "Bot test-token", request.Header.Get("Authorization"))
@@ -27,15 +28,15 @@ func TestServicePoolResetDiscordPreservesMessageAndSuppressesMentions(t *testing
 			} `json:"allowed_mentions"`
 		}
 		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
-		require.Equal(t, "配额已恢复\n@everyone", payload.Content)
+		require.Equal(t, content, payload.Content)
 		require.Equal(t, "fixed-event-nonce", payload.Nonce)
 		require.True(t, payload.EnforceNonce)
-		require.Empty(t, payload.AllowedMentions.Parse)
+		require.ElementsMatch(t, []string{"everyone", "users", "roles"}, payload.AllowedMentions.Parse)
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"id":"message-id"}`))}, nil
 	})}}
 	svc := &ServicePoolResetService{onboarding: onboarding}
 	stored := &onboardingStoredConfig{OnboardingConfig: OnboardingConfig{Discord: OnboardingDiscordConfig{BotToken: "test-token"}}}
-	state, id, code := svc.sendResetNotification(context.Background(), stored, "fixed-event-nonce", "123456", "配额已恢复\n@everyone")
+	state, id, code := svc.sendResetNotification(context.Background(), stored, "fixed-event-nonce", "123456", content)
 	require.Equal(t, "sent", state)
 	require.Equal(t, "message-id", id)
 	require.Empty(t, code)
