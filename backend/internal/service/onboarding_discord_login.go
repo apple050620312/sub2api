@@ -152,7 +152,7 @@ func (s *OnboardingService) CompleteDiscordLoginAuthorization(ctx context.Contex
 	}
 	_ = rows.Close()
 	if err != nil {
-		if isApplicationError(err) {
+		if isDiscordApplicationError(err) {
 			return nil, err
 		}
 		return nil, infraerrors.ServiceUnavailable("DISCORD_LOGIN_STORAGE_UNAVAILABLE", "Discord 登录存储暂时不可用，请稍后重试")
@@ -171,7 +171,7 @@ func (s *OnboardingService) BindDiscordLogin(ctx context.Context, userID int64, 
 	}
 	_, err = s.saveDiscordBinding(ctx, userID, profile.ID, profile.Username, stored)
 	if err != nil {
-		if isApplicationError(err) {
+		if isDiscordApplicationError(err) {
 			return err
 		}
 		return infraerrors.ServiceUnavailable("DISCORD_LOGIN_STORAGE_UNAVAILABLE", "Discord 登录绑定暂时不可用，请稍后重试")
@@ -183,7 +183,7 @@ func discordNetworkError(operation string, _ error) error {
 	return infraerrors.ServiceUnavailable("DISCORD_API_UNAVAILABLE", fmt.Sprintf("Discord %s暂时不可用，请稍后重试", operation))
 }
 
-func isApplicationError(err error) bool {
+func isDiscordApplicationError(err error) bool {
 	var applicationError *infraerrors.ApplicationError
 	return errors.As(err, &applicationError)
 }
