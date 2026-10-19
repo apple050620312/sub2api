@@ -253,6 +253,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
 	clientOutputStarted := false
+	firstOutputEventType := ""
 	codexFailureTerminal := account != nil && account.IsOpenAIOAuthLike()
 	upstreamRequestID := strings.TrimSpace(resp.Header.Get("x-request-id"))
 	var streamEarlyErr error
@@ -264,6 +265,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	pendingSSEEventType := ""
 	eventInProgress := false
 	eventStartsClientOutput := false
+	eventOutputType := ""
 	eventStartsTTFTOutput := false
 	eventShouldFlush := false
 	handlePendingWriteError := func(err error) {
@@ -297,6 +299,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					logger.LegacyPrintf("service.openai_gateway", "Client disconnected during streaming flush, continuing to drain upstream for billing")
 				} else {
 					clientOutputStarted = true
+					if firstOutputEventType == "" && eventOutputType != "" {
+						firstOutputEventType = eventOutputType
+					}
 					lastDownstreamWriteAt = time.Now()
 				}
 			}
@@ -311,6 +316,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			firstTokenMs = &ms
 		}
 		eventStartsClientOutput = false
+		eventOutputType = ""
 		eventStartsTTFTOutput = false
 		eventShouldFlush = false
 	}
@@ -571,7 +577,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 						// Once semantic output is committed, failover replay is unsafe. Keep
 						// the terminal event on the existing stream, but retain the upstream
 						// request ID and payload for operations diagnostics.
-						s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
+						s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "stream_failed", dataBytes, failedMessage, firstOutputEventType)
 					}
 				}
 				if !outputStarted {
@@ -682,6 +688,9 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			startsTTFTOutput := openAIStreamDataStartsTTFT(data, eventType, forceFlushFailedEvent, ttftMode)
 			if stageFirstOutput {
 				eventStartsClientOutput = eventStartsClientOutput || startsClientOutput
+				if startsClientOutput && eventOutputType == "" {
+					eventOutputType = eventType
+				}
 				eventStartsTTFTOutput = eventStartsTTFTOutput || startsTTFTOutput
 				if startsClientOutput {
 					firstOutputScanGuard.Store(false)

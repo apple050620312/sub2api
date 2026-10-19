@@ -1149,7 +1149,7 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 		default:
 			return true
 		}
-	case "response.content_part.added":
+	case "response.content_part.added", "response.content_part.done":
 		part := gjson.GetBytes(payload, "part")
 		if !part.Exists() || !part.IsObject() {
 			return true
@@ -1162,7 +1162,7 @@ func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) 
 		default:
 			return true
 		}
-	case "response.reasoning_summary_part.added":
+	case "response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
 		part := gjson.GetBytes(payload, "part")
 		if !part.Exists() || !part.IsObject() || strings.TrimSpace(part.Get("type").String()) != "summary_text" {
 			return true
@@ -1178,6 +1178,7 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 	if trimmed == "" {
 		return false
 	}
+	field := ""
 	switch strings.TrimSpace(eventType) {
 	case "response.failed":
 		return false
@@ -1189,8 +1190,20 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 		// （content_policy / invalid_request 等）维持原样转发，保留上游错误细节。
 		payload := []byte(trimmed)
 		return !openAIStreamFailedEventShouldFailover(payload, extractOpenAISSEErrorMessage(payload))
-	case "response.output_item.added", "response.content_part.added", "response.reasoning_summary_part.added":
+	case "response.output_item.added", "response.content_part.added", "response.reasoning_summary_part.added",
+		"response.content_part.done", "response.reasoning_summary_part.done":
 		return openAIStreamAddedEventStartsClientOutput([]byte(trimmed), eventType)
+	case "response.output_text.delta", "response.reasoning_summary_text.delta", "response.reasoning_text.delta",
+		"response.function_call_arguments.delta", "response.custom_tool_call_input.delta", "response.refusal.delta":
+		field = "delta"
+	case "response.output_text.done", "response.reasoning_summary_text.done", "response.reasoning_text.done":
+		field = "text"
+	case "response.refusal.done":
+		field = "refusal"
+	}
+	if field != "" && gjson.Valid(trimmed) {
+		value := gjson.Get(trimmed, field)
+		return value.Type != gjson.String || value.String() != ""
 	}
 	return !openAIStreamEventIsMetadata(eventType)
 }
@@ -1690,6 +1703,7 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 	kind string,
 	payload []byte,
 	message string,
+	firstOutputEventType ...string,
 ) string {
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
@@ -1721,6 +1735,9 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 			event.Platform = account.Platform
 			event.AccountID = account.ID
 			event.AccountName = account.Name
+		}
+		if len(firstOutputEventType) > 0 {
+			event.FirstOutputEventType = truncateString(strings.TrimSpace(firstOutputEventType[0]), 128)
 		}
 		appendOpsUpstreamError(c, event)
 	}
@@ -1895,6 +1912,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
 	clientOutputStarted := false
+	firstOutputEventType := ""
 	codexFailureTerminal := account != nil && account.Platform == PlatformOpenAI
 	failureDelivered := false
 	suppressCurrentEvent := false
@@ -2017,6 +2035,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			suppressCurrentEvent = codexFailureTerminal && (eventType == "error" || (sawBareError && !sawResponseFailed && eventType != "response.failed"))
 		}
 		lineStartsClientOutput := false
+		lineOutputEventType := ""
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
@@ -2111,7 +2130,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					if eventType == "response.failed" {
 						// The stream cannot be replayed after semantic output. Preserve the
 						// terminal event, while making the upstream failure queryable.
-						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
+						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "stream_failed", dataBytes, failedMessage, firstOutputEventType)
 					}
 				}
 				if !outputStarted {
@@ -2171,6 +2190,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				line = "data: " + string(sanitizedData)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			if lineStartsClientOutput {
+				lineOutputEventType = eventType
+			}
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
 				semanticOutputSeen = true
 			}
@@ -2218,6 +2240,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
 				clientOutputStarted = true
+				if firstOutputEventType == "" && lineOutputEventType != "" {
+					firstOutputEventType = lineOutputEventType
+				}
 				flushPending = true
 				if line == "" {
 					flushPendingOutput()
