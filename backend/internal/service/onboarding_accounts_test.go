@@ -106,7 +106,7 @@ func TestOnboardingSubscriptionEligibilityIsIdempotent(t *testing.T) {
 		{ID: 2, UserID: 7, GroupID: 10, Status: SubscriptionStatusActive, ExpiresAt: now.Add(24 * time.Hour), Notes: "purchased"},
 	}}
 	svc := &OnboardingService{subscriptions: &SubscriptionService{userSubRepo: repo}}
-	selected := map[int64]OnboardingSubscriptionRule{9: {GroupID: 9, ValidityDays: 30, Units: 1}}
+	selected := map[int64]OnboardingSubscriptionRule{9: {GroupID: 9, ValidityDays: 30}}
 	for attempt := 0; attempt < 3; attempt++ {
 		_, err := svc.syncOnboardingSubscriptions(context.Background(), 7, selected, repo.subs, now)
 		require.NoError(t, err)
@@ -178,9 +178,7 @@ func TestOnboardingAccountMutationsCheckOwnershipAndReconcile(t *testing.T) {
 			mock.ExpectExec("SELECT id FROM users").WithArgs(int64(7)).WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectExec("SELECT id FROM accounts").WithArgs(int64(42)).WillReturnResult(sqlmock.NewResult(0, 1))
 			if action != "foreign" && action != "admin_error" {
-				for load := 0; load < 2; load++ {
-					mock.ExpectQuery("SELECT config FROM onboarding_config").WillReturnRows(sqlmock.NewRows([]string{"config"}).AddRow(`{"enabled":true,"subscription_rules":{"plus":{"group_id":9,"validity_days":30,"units":1}}}`))
-				}
+				mock.ExpectQuery("SELECT config FROM onboarding_config").WillReturnRows(sqlmock.NewRows([]string{"config"}).AddRow(`{"enabled":true,"subscription_rules":{"1":{"group_id":9,"validity_days":30}}}`))
 				mock.ExpectExec("SELECT id FROM user_subscriptions").WithArgs(int64(7)).WillReturnResult(sqlmock.NewResult(0, 1))
 			}
 			if action == "failure" {

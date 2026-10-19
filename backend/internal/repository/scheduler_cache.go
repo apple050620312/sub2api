@@ -1034,10 +1034,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"codex_5h_reset_after_seconds",
 		"codex_7d_reset_after_seconds",
 		"codex_usage_updated_at",
-		// 用户引导账号归属用于按用户优先选择专属账号，并在专属账号不可用时
-		// 判断是否允许回退到公共账号。
 		"onboarding_owner_user_id",
-		"onboarding_public_fallback",
 		"auto_pause_5h_threshold",
 		"auto_pause_7d_threshold",
 		"auto_pause_5h_disabled",

@@ -69,8 +69,8 @@ export interface OnboardingDiscordConfig {
 export interface OnboardingConfig {
   enabled: boolean
   discord: OnboardingDiscordConfig
-  plan_units: Record<string, number>
-  subscription_rules: Record<string, { group_id: number; validity_days: number; units: number }>
+  subscription_rules: Record<string, { group_id: number; validity_days: number }>
+  subscription_rules_need_review?: boolean
   openai_redirect_uri: string
   ccswitch_download_url: string
 }
@@ -80,10 +80,8 @@ export interface OnboardingUserOverview {
   discord_required: boolean
   accounts: OnboardingAccountSummary[]
   account_units: number
-  api_key_count: number
   ready_for_account: boolean
   ready_for_key: boolean
-  ready_for_ccs: boolean
   config: OnboardingConfig
   subscriptions: Array<{ group_name: string; status: string; expires_at: string }>
 }

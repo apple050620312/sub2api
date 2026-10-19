@@ -7,20 +7,21 @@ vi.mock('vue-i18n', async () => {
   return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
 })
 
-const api = vi.hoisted(() => ({ userOverview: vi.fn(), adminOverview: vi.fn(), pause: vi.fn(), remove: vi.fn(), bindAccount: vi.fn(), bindDiscord: vi.fn(), members: vi.fn(), showError: vi.fn() }))
+const api = vi.hoisted(() => ({ userOverview: vi.fn(), adminOverview: vi.fn(), pause: vi.fn(), remove: vi.fn(), bindAccount: vi.fn(), bindDiscord: vi.fn(), members: vi.fn(), showError: vi.fn(), listKeys: vi.fn(), createKey: vi.fn(), updateConfig: vi.fn() }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ replace: vi.fn() }) }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: api.showError, showSuccess: vi.fn() }) }))
 vi.mock('@/api/user', () => ({ getOnboardingOverview: api.userOverview, setOnboardingAccountPaused: api.pause, deleteOnboardingAccount: api.remove }))
-vi.mock('@/api/admin/onboarding', () => ({ onboardingAPI: { getOverview: api.adminOverview, bindAccount: api.bindAccount, bindDiscordMember: api.bindDiscord, getDiscordMembers: api.members } }))
+vi.mock('@/api/admin/onboarding', () => ({ onboardingAPI: { getOverview: api.adminOverview, bindAccount: api.bindAccount, bindDiscordMember: api.bindDiscord, getDiscordMembers: api.members, updateConfig: api.updateConfig } }))
 vi.mock('@/api/admin/groups', () => ({ getAll: vi.fn().mockResolvedValue([{ id: 9, name: 'Plus 周额度', platform: 'openai', status: 'active', subscription_type: 'subscription' }]) }))
-vi.mock('@/api/groups', () => ({ userGroupsAPI: { getAvailable: vi.fn().mockResolvedValue([]) } }))
-vi.mock('@/api/keys', () => ({ keysAPI: { create: vi.fn() } }))
+vi.mock('@/api/groups', () => ({ userGroupsAPI: { getAvailable: vi.fn().mockResolvedValue([{ id: 9, name: 'Plus 周额度', platform: 'openai', status: 'active', subscription_type: 'subscription' }]) } }))
+vi.mock('@/api/keys', () => ({ keysAPI: { create: api.createKey, list: api.listKeys } }))
 
 import UserOnboardingView from '@/views/user/OnboardingView.vue'
 import AdminOnboardingView from '@/views/admin/OnboardingView.vue'
 
 const account = { id: 42, name: '共享 GPT Plus', email: 'gpt@example.com', plan_type: 'plus', status: 'active', paused: false, schedulable: true, concurrency: 3, groups: ['Plus 周额度'], usage: { five_hour_used_percent: 25 }, created_at: '2026-10-18T00:00:00Z', updated_at: '2026-10-18T00:00:00Z' }
-const config = { enabled: true, discord: { client_id: '', client_secret_configured: true, bot_token_configured: true, guild_id: 'guild', role_id: 'role', redirect_uri: '' }, plan_units: { plus: 1, pro: 5, business_premium: 5, business_standard: 1 }, subscription_rules: {}, openai_redirect_uri: '', ccswitch_download_url: '' }
+const config = { enabled: true, discord: { client_id: '', client_secret_configured: true, bot_token_configured: true, guild_id: 'guild', role_id: 'role', redirect_uri: '' }, subscription_rules: {}, openai_redirect_uri: '', ccswitch_download_url: '' }
+const existingKey = { id: 88, name: '我的现有 Codex', key: 'sk-existing-private', group_id: 9, group: { id: 9, name: 'Plus 周额度', platform: 'openai' }, status: 'active', expires_at: null, quota: 0, quota_used: 0 }
 const global = { stubs: { ServiceAccountDetails: true, BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' }, ConfirmDialog: { props: ['show', 'title', 'message'], template: '<div v-if="show">{{ title }} {{ message }}</div>' } } }
 
 beforeEach(() => {
@@ -28,9 +29,106 @@ beforeEach(() => {
   api.userOverview.mockResolvedValue({ accounts: [account], account_units: 1, subscriptions: [], ready_for_key: true, ready_for_account: true, config })
   api.adminOverview.mockResolvedValue({ config, users: [{ user_id: 7, email: 'owner@example.com', username: 'Owner', accounts: [], account_units: 0 }], unassigned_accounts: [account] })
   api.members.mockResolvedValue([{ id: '12345', username: 'discord-user', display_name: 'Discord 昵称' }])
+  api.listKeys.mockResolvedValue({ items: [], total: 0 })
+  api.updateConfig.mockResolvedValue(config)
 })
 
 describe('service center account management', () => {
+  it('completes step three using an existing key and imports it in step four', async () => {
+    api.listKeys.mockResolvedValue({ items: [existingKey], total: 1 })
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    const keyStep = wrapper.find('[aria-label="第三步：API Key"]')
+    expect(keyStep.text()).toContain('已完成')
+    expect(keyStep.text()).toContain('我的现有 Codex')
+    expect(keyStep.text()).toContain('Plus 周额度')
+    expect(keyStep.text()).not.toContain('sk-existing-private')
+    const importLink = wrapper.find('[aria-label="第四步：CC Switch"] a[href^="ccswitch://"]')
+    expect(new URL(importLink.attributes('href')).searchParams.get('apiKey')).toBe(existingKey.key)
+    expect(new URL(importLink.attributes('href')).searchParams.get('app')).toBe('codex')
+    expect(api.createKey).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('imports the selected key by name without showing numeric IDs', async () => {
+    api.listKeys.mockResolvedValue({ items: [existingKey, { ...existingKey, id: 89, name: '我的第二个 Codex', key: 'sk-second' }], total: 2 })
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    wrapper.findAllComponents(Select).find(select => select.props('ariaLabel') === '用于 CC Switch 的 API Key')!.vm.$emit('update:modelValue', 89)
+    await flushPromises()
+    const fourth = wrapper.find('[aria-label="第四步：CC Switch"]')
+    expect(fourth.text()).toContain('我的第二个 Codex')
+    expect(new URL(fourth.find('a[href^="ccswitch://"]').attributes('href')).searchParams.get('apiKey')).toBe('sk-second')
+    wrapper.unmount()
+  })
+
+  it('finds an existing usable key beyond the first page', async () => {
+    api.listKeys.mockResolvedValueOnce({ items: [{ ...existingKey, status: 'inactive' }], total: 2 }).mockResolvedValueOnce({ items: [{ ...existingKey, id: 89, name: '第二页的 Codex', key: 'sk-next-page' }], total: 2 })
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    expect(api.listKeys).toHaveBeenNthCalledWith(1, 1, 100)
+    expect(api.listKeys).toHaveBeenNthCalledWith(2, 2, 100)
+    expect(wrapper.find('[aria-label="第三步：API Key"]').text()).toContain('已完成')
+    expect(new URL(wrapper.find('a[href^="ccswitch://"]').attributes('href')).searchParams.get('apiKey')).toBe('sk-next-page')
+    wrapper.unmount()
+  })
+
+  it('does not import a disabled, expired or exhausted key', async () => {
+    api.listKeys.mockResolvedValue({ items: [{ ...existingKey, status: 'inactive' }, { ...existingKey, id: 89, expires_at: '2020-01-01T00:00:00Z' }, { ...existingKey, id: 90, quota: 10, quota_used: 10 }], total: 3 })
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    expect(wrapper.find('[aria-label="第三步：API Key"]').text()).toContain('未完成')
+    expect(wrapper.find('a[href^="ccswitch://"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('creates a key when needed, then reuses it for import', async () => {
+    api.createKey.mockResolvedValue(existingKey)
+    api.listKeys.mockResolvedValueOnce({ items: [], total: 0 }).mockResolvedValue({ items: [existingKey], total: 1 })
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '创建 API Key')!.trigger('click')
+    await flushPromises()
+    expect(api.createKey).toHaveBeenCalledWith('我的 Codex', 9)
+    expect(wrapper.find('[aria-label="第三步：API Key"]').text()).toContain('已完成')
+    expect(new URL(wrapper.find('a[href^="ccswitch://"]').attributes('href')).searchParams.get('apiKey')).toBe(existingKey.key)
+    wrapper.unmount()
+  })
+
+  it('shows an explicit retry when existing keys cannot be loaded', async () => {
+    api.listKeys.mockRejectedValueOnce(new Error('offline'))
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    expect(wrapper.find('[role="alert"]').text()).toContain('加载已有 API Key 失败')
+    expect(wrapper.find('a[href^="ccswitch://"]').exists()).toBe(false)
+    expect(api.createKey).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('configures five account-count tiers and confirms subscription names', async () => {
+    const wrapper = mount(AdminOnboardingView, { global })
+    await flushPromises()
+    const tierSelectors = wrapper.findAllComponents(Select).filter(select => select.props('ariaLabel')?.endsWith('对应订阅'))
+    expect(tierSelectors).toHaveLength(5)
+    tierSelectors[1]!.vm.$emit('update:modelValue', 9)
+    await wrapper.findAll('button').find(button => button.text() === '保存配置')!.trigger('click')
+    expect(api.updateConfig).not.toHaveBeenCalled()
+    expect(wrapper.findComponent(ConfirmDialog).props('message')).toContain('2 个 Plus 等值：Plus 周额度')
+    wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
+    await flushPromises()
+    expect(api.updateConfig).toHaveBeenCalledWith(expect.objectContaining({ subscription_rules: expect.objectContaining({ '2': { group_id: 9, validity_days: 30 } }) }))
+    expect(wrapper.text()).not.toContain('消耗单位')
+    wrapper.unmount()
+  })
+
+  it('labels a team account as Business Standard', async () => {
+    api.userOverview.mockResolvedValueOnce({ accounts: [{ ...account, plan_type: 'team' }], account_units: 1, subscriptions: [], ready_for_key: true, ready_for_account: true, config })
+    const wrapper = mount(UserOnboardingView, { global })
+    await flushPromises()
+    expect(wrapper.find('table').text()).toContain('Business Standard')
+    expect(wrapper.find('table').text()).not.toContain('Business Premium')
+    wrapper.unmount()
+  })
   it('shows the owner account and confirms pause before updating it', async () => {
     const wrapper = mount(UserOnboardingView, { global, attachTo: document.body })
     await flushPromises()

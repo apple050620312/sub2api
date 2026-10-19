@@ -94,11 +94,12 @@ func TestDynamic5hSubscriptionFailOpen(t *testing.T) {
 }
 
 func TestDynamic5hSubscriptionAccountOwnership(t *testing.T) {
-	private := &Account{Extra: map[string]any{onboardingOwnerExtraKey: int64(7)}}
-	public := &Account{Extra: map[string]any{onboardingOwnerExtraKey: int64(8), onboardingPublicFallbackExtraKey: true}}
-	require.True(t, onboardingAccountAllowedForUser(private, 7))
-	require.True(t, onboardingAccountAllowedForUser(private, 8), "all contributed accounts allow public fallback")
-	require.True(t, onboardingAccountAllowedForUser(public, 7))
-	require.True(t, onboardingAccountAllowedForUser(&Account{}, 7))
-	require.False(t, onboardingAccountAllowedForUser(nil, 7))
+	owner := &Account{ID: 1, Extra: map[string]any{onboardingOwnerExtraKey: int64(7)}}
+	other := &Account{ID: 2, Extra: map[string]any{onboardingOwnerExtraKey: int64(8), onboardingPublicFallbackExtraKey: false}}
+	public := &Account{ID: 3}
+	owned, fallback := partitionOnboardingAccounts([]*Account{other, nil, owner, public}, 7)
+	require.Equal(t, []*Account{owner}, owned)
+	require.Equal(t, []*Account{other, public}, fallback, "legacy fallback flags must not prevent contributed accounts from serving other users")
+	require.False(t, onboardingAccountBelongsToUser(nil, 7))
+	require.False(t, onboardingAccountBelongsToUser(public, 0))
 }

@@ -420,13 +420,12 @@ func (s *defaultOpenAIAccountScheduler) Select(
 		}
 		if selection != nil && selection.Account != nil {
 			compatible, _ := s.isAccountRequestCompatibleReason(ctx, selection.Account, req)
-			ownerAllowed := onboardingAccountAllowedForUser(selection.Account, req.PreferredOwnerUserID)
 			hasGroupMetadata := len(selection.Account.GroupIDs) > 0 || len(selection.Account.AccountGroups) > 0
 			groupCompatible := !hasGroupMetadata || openAIStickyAccountMatchesGroup(selection.Account, req.GroupID)
 			if hasGroupMetadata && s.service != nil {
 				groupCompatible = s.service.openAIAccountMatchesSchedulingGroup(selection.Account, req.GroupID)
 			}
-			if !ownerAllowed || !groupCompatible ||
+			if !groupCompatible ||
 				!compatible || !s.isAccountTransportCompatible(selection.Account, req.RequiredTransport) {
 				if selection.ReleaseFunc != nil {
 					selection.ReleaseFunc()
@@ -541,9 +540,6 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	}
 	if shouldClearStickySession(account, req.RequestedModel) || account.Platform != NormalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() || !account.IsSchedulable() {
 		clearBinding()
-		return nil, false, nil
-	}
-	if !onboardingAccountAllowedForUser(account, req.PreferredOwnerUserID) {
 		return nil, false, nil
 	}
 	if !s.isAccountRequestCompatible(ctx, account, req) {
@@ -1298,9 +1294,6 @@ func (s *defaultOpenAIAccountScheduler) tryFallbackToWeightedSticky(
 		}
 		account, err := s.service.getSchedulableAccount(ctx, accountID)
 		if err != nil || account == nil {
-			continue
-		}
-		if !onboardingAccountAllowedForUser(account, req.PreferredOwnerUserID) {
 			continue
 		}
 		if !s.isAccountRequestCompatible(ctx, account, req) || !s.isAccountTransportCompatible(account, req.RequiredTransport) {
@@ -2316,12 +2309,6 @@ func (s *OpenAIGatewayService) selectLegacyAccountByPreviousResponse(
 		return nil, false, nil
 	}
 	account := selection.Account
-	if !onboardingAccountAllowedForUser(account, preferredOwnerUserIDFromContext(ctx)) {
-		if selection.ReleaseFunc != nil {
-			selection.ReleaseFunc()
-		}
-		return nil, false, nil
-	}
 	scheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
 	compatible, _ := scheduler.isAccountRequestCompatibleReason(ctx, account, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,

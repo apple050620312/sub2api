@@ -56,17 +56,16 @@ type OnboardingDiscordConfig struct {
 type OnboardingSubscriptionRule struct {
 	GroupID      int64 `json:"group_id"`
 	ValidityDays int   `json:"validity_days"`
-	Units        int   `json:"units"`
 }
 
 // OnboardingConfig contains all public onboarding configuration.
 type OnboardingConfig struct {
-	Enabled             bool                                  `json:"enabled"`
-	Discord             OnboardingDiscordConfig               `json:"discord"`
-	PlanUnits           map[string]int                        `json:"plan_units"`
-	SubscriptionRules   map[string]OnboardingSubscriptionRule `json:"subscription_rules"`
-	OpenAIRedirectURI   string                                `json:"openai_redirect_uri"`
-	CCSwitchDownloadURL string                                `json:"ccswitch_download_url"`
+	Enabled                     bool                                  `json:"enabled"`
+	Discord                     OnboardingDiscordConfig               `json:"discord"`
+	SubscriptionRules           map[string]OnboardingSubscriptionRule `json:"subscription_rules"`
+	SubscriptionRulesNeedReview bool                                  `json:"subscription_rules_need_review"`
+	OpenAIRedirectURI           string                                `json:"openai_redirect_uri"`
+	CCSwitchDownloadURL         string                                `json:"ccswitch_download_url"`
 }
 
 type onboardingStoredConfig struct {
@@ -118,10 +117,8 @@ type OnboardingUserOverview struct {
 	DiscordRequired bool                            `json:"discord_required"`
 	Accounts        []OnboardingAccountSummary      `json:"accounts"`
 	AccountUnits    int                             `json:"account_units"`
-	ApiKeyCount     int64                           `json:"api_key_count"`
 	ReadyForAccount bool                            `json:"ready_for_account"`
 	ReadyForKey     bool                            `json:"ready_for_key"`
-	ReadyForCCS     bool                            `json:"ready_for_ccs"`
 	Config          OnboardingConfig                `json:"config"`
 	Subscriptions   []OnboardingSubscriptionSummary `json:"subscriptions"`
 }
@@ -165,7 +162,6 @@ func NewOnboardingService(db *dbent.Client, admin AdminService, oauth *OpenAIOAu
 func defaultOnboardingConfig() OnboardingConfig {
 	return OnboardingConfig{
 		Enabled:           true,
-		PlanUnits:         map[string]int{"plus": 1, "pro": 5, "business_premium": 5, "business_standard": 1},
 		SubscriptionRules: map[string]OnboardingSubscriptionRule{},
 	}
 }
@@ -195,11 +191,8 @@ func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredCo
 			return nil, fmt.Errorf("decode onboarding config: %w", err)
 		}
 	}
-	if stored.PlanUnits == nil {
-		stored.PlanUnits = defaultOnboardingConfig().PlanUnits
-	}
-	if stored.SubscriptionRules == nil {
-		stored.SubscriptionRules = map[string]OnboardingSubscriptionRule{}
+	if err := normalizeOnboardingSubscriptionRules(raw, &stored.OnboardingConfig); err != nil {
+		return nil, err
 	}
 	if stored.DiscordClientSecretEncrypted != "" && s.encryptor != nil {
 		stored.Discord.ClientSecret, err = s.encryptor.Decrypt(stored.DiscordClientSecretEncrypted)
@@ -243,23 +236,18 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	if err != nil {
 		return OnboardingConfig{}, err
 	}
-	if next.PlanUnits == nil {
-		next.PlanUnits = current.PlanUnits
-	}
 	if next.SubscriptionRules == nil {
 		next.SubscriptionRules = current.SubscriptionRules
 	}
-	for plan, units := range next.PlanUnits {
-		if normalizeOnboardingPlan(plan) != plan || units < 0 || units > 1000 {
-			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "套餐单位必须在 0 到 1000 之间")
+	for tier, rule := range next.SubscriptionRules {
+		if tier != "1" && tier != "2" && tier != "3" && tier != "4" && tier != "5" {
+			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "请选择 1 到 5 个 Plus 等值对应的订阅档位")
 		}
-	}
-	for _, rule := range next.SubscriptionRules {
 		if rule.GroupID == 0 {
 			continue
 		}
-		if rule.GroupID < 0 || rule.ValidityDays < 1 || rule.ValidityDays > MaxValidityDays || rule.Units < 1 || rule.Units > 1000 {
-			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "订阅规则的有效期和消耗单位必须为正数")
+		if rule.GroupID < 0 || rule.ValidityDays < 1 || rule.ValidityDays > MaxValidityDays {
+			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "订阅规则必须选择有效分组和有效期")
 		}
 		group, err := s.admin.GetGroup(ctx, rule.GroupID)
 		if err != nil || group == nil || group.Platform != PlatformOpenAI || group.SubscriptionType != SubscriptionTypeSubscription || group.Status != StatusActive {
@@ -426,23 +414,8 @@ func accountOwnerID(account Account) int64 {
 	}
 }
 
-func onboardingAccountOwnerUserID(account *Account) int64 {
-	if account == nil {
-		return 0
-	}
-	return accountOwnerID(*account)
-}
-
-func onboardingAccountIsPublic(account *Account) bool {
-	return account != nil
-}
-
 func onboardingAccountBelongsToUser(account *Account, userID int64) bool {
-	return account != nil && userID > 0 && onboardingAccountOwnerUserID(account) == userID
-}
-
-func onboardingAccountAllowedForUser(account *Account, userID int64) bool {
-	return onboardingAccountIsPublic(account)
+	return account != nil && userID > 0 && accountOwnerID(*account) == userID
 }
 
 func partitionOnboardingAccounts(accounts []*Account, userID int64) (owned, public []*Account) {
@@ -456,44 +429,8 @@ func partitionOnboardingAccounts(accounts []*Account, userID int64) (owned, publ
 	return owned, public
 }
 
-func normalizeOnboardingPlan(value string) string {
-	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.ReplaceAll(strings.ReplaceAll(value, "-", "_"), " ", "_")
-	switch value {
-	case "chatgpt_plus", "plus", "chatgptplus":
-		return "plus"
-	case "chatgpt_pro", "pro", "chatgptpro":
-		return "pro"
-	case "business_premium", "businesspremium", "team":
-		return "business_premium"
-	case "business_standard", "businessstandard":
-		return "business_standard"
-	default:
-		return value
-	}
-}
-
-func onboardingPlanUnits(plan string, configured map[string]int) int {
-	plan = normalizeOnboardingPlan(plan)
-	if units, ok := configured[plan]; ok {
-		return units
-	}
-	switch plan {
-	case "plus", "business_standard":
-		return 1
-	case "pro", "business_premium":
-		return 5
-	default:
-		return 0
-	}
-}
-
 func (s *OnboardingService) listUserAccounts(ctx context.Context, userID int64) ([]Account, int, error) {
 	accounts, err := s.listOpenAIAccounts(ctx)
-	if err != nil {
-		return nil, 0, err
-	}
-	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -505,7 +442,7 @@ func (s *OnboardingService) listUserAccounts(ctx context.Context, userID int64) 
 		}
 		owned = append(owned, account)
 		if onboardingAccountContributes(account, time.Now()) {
-			units += onboardingPlanUnits(account.GetCredential("plan_type"), stored.PlanUnits)
+			units += onboardingPlanUnits(account.GetCredential("plan_type"))
 		}
 	}
 	return owned, units, nil
@@ -578,10 +515,6 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 	if err != nil {
 		return nil, err
 	}
-	_, keyCount, keyErr := s.admin.GetUserAPIKeys(ctx, userID, 1, 1, "created_at", "desc")
-	if keyErr != nil {
-		return nil, keyErr
-	}
 	summaries := make([]OnboardingAccountSummary, 0, len(accounts))
 	for _, account := range accounts {
 		summaries = append(summaries, onboardingAccountSummary(account))
@@ -603,10 +536,10 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 	}
 	return &OnboardingUserOverview{
 		Discord: binding, DiscordRequired: true, Accounts: summaries, AccountUnits: units,
-		ApiKeyCount: keyCount, ReadyForAccount: binding != nil && binding.Status == "active",
-		ReadyForKey: binding != nil && binding.Status == "active" && readyForKey,
-		ReadyForCCS: keyCount > 0, Config: publicOnboardingConfig(stored),
-		Subscriptions: subscriptions,
+		ReadyForAccount: binding != nil && binding.Status == "active",
+		ReadyForKey:     binding != nil && binding.Status == "active" && readyForKey,
+		Config:          publicOnboardingConfig(stored),
+		Subscriptions:   subscriptions,
 	}, nil
 }
 
@@ -810,10 +743,10 @@ func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, se
 		return nil, err
 	}
 	plan := normalizeOnboardingPlan(tokenInfo.PlanType)
-	if onboardingPlanUnits(plan, stored.PlanUnits) <= 0 || plan == "free" || plan == "go" || plan == "k12" || plan == "" {
+	if onboardingPlanUnits(plan) <= 0 {
 		return nil, ErrUnsupportedOpenAIPlan
 	}
-	name := "OpenAI " + plan + " 账号"
+	name := "OpenAI " + onboardingPlanName(plan) + " 账号"
 	extra := map[string]any{onboardingOwnerExtraKey: userID, "onboarding_owner_source": "user_oauth", "onboarding_plan_type": plan}
 	var account *Account
 	err = s.mutateUser(ctx, userID, 0, func(ctx context.Context) error {
@@ -845,26 +778,7 @@ func (s *OnboardingService) reconcileSubscriptions(ctx context.Context, userID i
 	if err != nil {
 		return err
 	}
-	selected := make(map[int64]OnboardingSubscriptionRule)
-	remaining := units
-	for _, key := range []string{"pro", "business_premium", "plus", "business_standard"} {
-		rule, ok := stored.SubscriptionRules[key]
-		if !ok || rule.GroupID <= 0 {
-			continue
-		}
-		cost := rule.Units
-		if cost <= 0 {
-			cost = onboardingPlanUnits(key, stored.PlanUnits)
-		}
-		if cost <= 0 || remaining < cost {
-			continue
-		}
-		if _, exists := selected[rule.GroupID]; exists {
-			continue
-		}
-		selected[rule.GroupID] = rule
-		remaining -= cost
-	}
+	selected := selectOnboardingSubscription(units, stored.SubscriptionRules)
 	if _, err := s.client(ctx).ExecContext(ctx, `SELECT id FROM user_subscriptions WHERE user_id=$1 AND deleted_at IS NULL ORDER BY id FOR UPDATE`, userID); err != nil {
 		return err
 	}
@@ -1070,7 +984,7 @@ func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdmin
 		owner := accountOwnerID(account)
 		accountsByOwner[owner] = append(accountsByOwner[owner], onboardingAccountSummary(account))
 		if onboardingAccountContributes(account, time.Now()) {
-			unitsByOwner[owner] += onboardingPlanUnits(account.GetCredential("plan_type"), stored.PlanUnits)
+			unitsByOwner[owner] += onboardingPlanUnits(account.GetCredential("plan_type"))
 		}
 	}
 	bindings, err := s.listBindings(ctx)

@@ -127,7 +127,6 @@ func (h *OnboardingHandler) CompleteOpenAI(c *gin.Context) {
 type onboardingConfigRequest struct {
 	Enabled             *bool                                         `json:"enabled"`
 	Discord             onboardingDiscordConfigRequest                `json:"discord"`
-	PlanUnits           map[string]int                                `json:"plan_units"`
 	SubscriptionRules   map[string]service.OnboardingSubscriptionRule `json:"subscription_rules"`
 	OpenAIRedirectURI   string                                        `json:"openai_redirect_uri"`
 	CCSwitchDownloadURL string                                        `json:"ccswitch_download_url"`
@@ -166,7 +165,7 @@ func (h *OnboardingHandler) UpdateAdminConfig(c *gin.Context) {
 		response.BadRequest(c, "请求格式无效："+err.Error())
 		return
 	}
-	next := service.OnboardingConfig{Enabled: true, PlanUnits: req.PlanUnits, SubscriptionRules: req.SubscriptionRules, OpenAIRedirectURI: req.OpenAIRedirectURI, CCSwitchDownloadURL: req.CCSwitchDownloadURL, Discord: service.OnboardingDiscordConfig{ClientID: req.Discord.ClientID, ClientSecret: req.Discord.ClientSecret, BotToken: req.Discord.BotToken, GuildID: req.Discord.GuildID, RoleID: req.Discord.RoleID, RedirectURI: req.Discord.RedirectURI}}
+	next := service.OnboardingConfig{Enabled: true, SubscriptionRules: req.SubscriptionRules, OpenAIRedirectURI: req.OpenAIRedirectURI, CCSwitchDownloadURL: req.CCSwitchDownloadURL, Discord: service.OnboardingDiscordConfig{ClientID: req.Discord.ClientID, ClientSecret: req.Discord.ClientSecret, BotToken: req.Discord.BotToken, GuildID: req.Discord.GuildID, RoleID: req.Discord.RoleID, RedirectURI: req.Discord.RedirectURI}}
 	if req.Enabled != nil {
 		next.Enabled = *req.Enabled
 	}

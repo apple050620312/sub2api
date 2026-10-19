@@ -1,7 +1,7 @@
 <template>
   <BaseDialog :show="!!account" :title="account?.name || '账号详情'" width="normal" @close="$emit('close')">
     <div v-if="account" class="space-y-6">
-      <p class="break-all text-sm text-gray-500">{{ account.email || '未提供邮箱' }} · {{ account.plan_type }}</p>
+      <p class="break-all text-sm text-gray-500">{{ account.email || '未提供邮箱' }} · {{ serviceAccountPlanLabel(account.plan_type) }}</p>
       <dl class="grid grid-cols-1 gap-x-6 gap-y-5 text-sm sm:grid-cols-2">
         <div v-for="item in details" :key="item.label"><dt class="text-gray-500">{{ item.label }}</dt><dd class="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">{{ item.value }}</dd></div>
       </dl>
@@ -18,6 +18,7 @@ import { computed } from 'vue'
 import BaseDialog from './BaseDialog.vue'
 import Dynamic5hUsageBar from './Dynamic5hUsageBar.vue'
 import type { OnboardingAccountSummary } from '@/api/user'
+import { serviceAccountPlanLabel } from '@/utils/serviceCenter'
 
 const props = defineProps<{ account: OnboardingAccountSummary | null }>()
 defineEmits<{ close: [] }>()
