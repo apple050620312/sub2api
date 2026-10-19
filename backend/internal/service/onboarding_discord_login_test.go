@@ -21,8 +21,8 @@ func TestDecodeDiscordJSONResponseMapsUpstreamFailures(t *testing.T) {
 		wantCode   int
 		wantReason string
 	}{
-		{name: "permission failure", statusCode: http.StatusForbidden, body: `{"message":"Missing Permissions"}`, wantCode: http.StatusBadGateway, wantReason: "DISCORD_API_ERROR"},
-		{name: "rate limited", statusCode: http.StatusTooManyRequests, body: `{"retry_after":1}`, wantCode: http.StatusServiceUnavailable, wantReason: "DISCORD_API_UNAVAILABLE"},
+		{name: "permission failure", statusCode: http.StatusForbidden, body: `{"message":"Missing Permissions"}`, wantCode: http.StatusBadRequest, wantReason: "DISCORD_API_ERROR"},
+		{name: "rate limited", statusCode: http.StatusTooManyRequests, body: `{"retry_after":1}`, wantCode: http.StatusTooManyRequests, wantReason: "DISCORD_RATE_LIMITED"},
 		{name: "discord outage", statusCode: http.StatusBadGateway, body: `{"message":"upstream unavailable"}`, wantCode: http.StatusServiceUnavailable, wantReason: "DISCORD_API_UNAVAILABLE"},
 		{name: "invalid success payload", statusCode: http.StatusOK, body: `{`, wantCode: http.StatusServiceUnavailable, wantReason: "DISCORD_API_INVALID_RESPONSE"},
 	}

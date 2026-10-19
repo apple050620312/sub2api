@@ -195,10 +195,13 @@ func decodeDiscordJSONResponse(resp *http.Response, target any, operation string
 		return infraerrors.ServiceUnavailable("DISCORD_API_UNAVAILABLE", fmt.Sprintf("读取 Discord %s响应失败，请稍后重试", operation))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return infraerrors.TooManyRequests("DISCORD_RATE_LIMITED", fmt.Sprintf("Discord %s请求过于频繁，请稍后重试", operation))
+		}
+		if resp.StatusCode >= 500 {
 			return infraerrors.ServiceUnavailable("DISCORD_API_UNAVAILABLE", fmt.Sprintf("Discord %s暂时不可用，请稍后重试", operation))
 		}
-		return infraerrors.New(http.StatusBadGateway, "DISCORD_API_ERROR", fmt.Sprintf("Discord %s失败（HTTP %d），请检查机器人权限和应用配置", operation, resp.StatusCode))
+		return infraerrors.BadRequest("DISCORD_API_ERROR", fmt.Sprintf("Discord %s失败（HTTP %d），请检查机器人权限和应用配置", operation, resp.StatusCode))
 	}
 	if target == nil || len(body) == 0 {
 		return nil

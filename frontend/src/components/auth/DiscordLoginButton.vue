@@ -36,8 +36,9 @@ const loading = ref(false)
 const errorMessage = ref('')
 
 function errorText(error: unknown): string {
-  const responseMessage = (error as { response?: { data?: { message?: string } } })?.response?.data?.message
-  return responseMessage || (error instanceof Error ? error.message : 'Discord 登录失败，请重试。')
+  const typedError = error as { message?: string; response?: { data?: { message?: string } } }
+  const responseMessage = typedError?.response?.data?.message
+  return responseMessage || typedError?.message || (error instanceof Error ? error.message : 'Discord 登录失败，请重试。')
 }
 
 function callbackValue(name: string): string {
