@@ -81,7 +81,7 @@ func TestOnboardingTierChangesSuspendOnlyPreviousAutomaticTier(t *testing.T) {
 		{ID: 2, GroupID: 102, Status: SubscriptionStatusSuspended, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour), Notes: onboardingManagedNotes + ":account:account_paused"},
 		{ID: 3, GroupID: 999, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour), Notes: "purchased"},
 	}}
-	svc := &OnboardingService{subscriptions: &SubscriptionService{userSubRepo: repo}}
+	svc := &ServiceCenterService{subscriptions: &SubscriptionService{userSubRepo: repo}}
 	rules := map[string]OnboardingSubscriptionRule{"1": {GroupID: 101}, "2": {GroupID: 102}}
 	for _, count := range []int{2, 1} {
 		groups, err := svc.syncOnboardingSubscriptions(context.Background(), 7, selectOnboardingSubscription(count, rules), repo.subs, now)
@@ -108,7 +108,7 @@ func TestOnboardingLegacySubscriptionRulesMigration(t *testing.T) {
 		{"same group legacy", `{"subscription_rules":{"plus":{"group_id":11,"units":1},"business_standard":{"group_id":11,"units":1}}}`, map[string]int64{"1": 11}, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			var config OnboardingConfig
+			var config ServiceCenterConfig
 			require.NoError(t, json.Unmarshal([]byte(test.raw), &config))
 			require.NoError(t, normalizeOnboardingSubscriptionRules([]byte(test.raw), &config))
 			groups := make(map[string]int64)

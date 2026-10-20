@@ -108,7 +108,7 @@ func TestOnboardingSubscriptionEligibilityIsIdempotent(t *testing.T) {
 		{ID: 1, UserID: 7, GroupID: 9, Status: SubscriptionStatusActive, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(24 * time.Hour), WeeklyUsageUSD: 8, Notes: onboardingManagedNotes + ":account"},
 		{ID: 2, UserID: 7, GroupID: 10, Status: SubscriptionStatusActive, ExpiresAt: now.Add(24 * time.Hour), Notes: "purchased"},
 	}}
-	svc := &OnboardingService{subscriptions: &SubscriptionService{userSubRepo: repo}}
+	svc := &ServiceCenterService{subscriptions: &SubscriptionService{userSubRepo: repo}}
 	selected := map[int64]OnboardingSubscriptionRule{9: {GroupID: 9, ValidityDays: 30}}
 	for attempt := 0; attempt < 3; attempt++ {
 		_, err := svc.syncOnboardingSubscriptions(context.Background(), 7, selected, repo.subs, now)
@@ -141,7 +141,7 @@ func TestOnboardingRejectsDuplicateOpenAIAccount(t *testing.T) {
 		require.NoError(t, err)
 		client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, database)))
 		t.Cleanup(func() { _ = client.Close() })
-		svc := &OnboardingService{db: client}
+		svc := &ServiceCenterService{db: client}
 		mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs("onboarding-openai:workspace").WillReturnResult(sqlmock.NewResult(0, 1))
 		mock.ExpectQuery("SELECT EXISTS").WithArgs("workspace", "member", "user@example.com").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(exists))
 		err = svc.checkOpenAIAccountNotAdded(context.Background(), &OpenAITokenInfo{ChatGPTAccountID: "workspace", ChatGPTUserID: "member", Email: "USER@example.com"})
@@ -175,7 +175,7 @@ func TestOnboardingAccountMutationsCheckOwnershipAndReconcile(t *testing.T) {
 			admin := &onboardingTestAdmin{accounts: []Account{account}}
 			now := time.Now()
 			repo := &onboardingTestSubscriptions{subs: []UserSubscription{{ID: 1, UserID: 7, GroupID: 9, StartsAt: now.Add(-time.Hour), ExpiresAt: now.Add(time.Hour), Status: SubscriptionStatusActive, Notes: onboardingManagedNotes + ":account"}}}
-			svc := NewOnboardingService(client, admin, nil, &SubscriptionService{userSubRepo: repo}, nil, nil, nil)
+			svc := NewServiceCenterService(client, admin, nil, &SubscriptionService{userSubRepo: repo}, nil, nil, nil)
 			mock.ExpectBegin()
 			mock.ExpectExec("SELECT id FROM onboarding_config").WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectExec("SELECT id FROM users").WithArgs(int64(7)).WillReturnResult(sqlmock.NewResult(0, 1))

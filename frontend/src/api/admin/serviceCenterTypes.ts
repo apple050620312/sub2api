@@ -1,6 +1,6 @@
-import type { OnboardingAccountSummary, OnboardingConfig, OnboardingDiscordBinding } from '../user'
+import type { ServiceAccountSummary, ServiceCenterConfig, OnboardingDiscordBinding } from '../serviceCenter'
 
-export type { OnboardingConfig }
+export type { ServiceCenterConfig }
 
 export interface OnboardingDiscordMember {
   id: string
@@ -9,20 +9,20 @@ export interface OnboardingDiscordMember {
   bound_email?: string
 }
 
-export interface OnboardingAdminUser {
+export interface ServiceManagementUser {
   user_id: number
   email: string
   username: string
   discord?: OnboardingDiscordBinding
-  accounts: OnboardingAccountSummary[]
+  accounts: ServiceAccountSummary[]
   account_units: number
 }
 
-export interface OnboardingAdminOverview {
-  config: OnboardingConfig
-  users: OnboardingAdminUser[]
-  unassigned_accounts: OnboardingAccountSummary[]
-  template_accounts?: OnboardingAccountSummary[]
+export interface ServiceManagementOverview {
+  config: ServiceCenterConfig
+  users: ServiceManagementUser[]
+  unassigned_accounts: ServiceAccountSummary[]
+  template_accounts?: ServiceAccountSummary[]
   pool_reset_status?: {
     checked_at?: string
     phase: string

@@ -84,7 +84,7 @@ func TestOnboardingReauthorizationUpdatesOriginalAccountTransactionally(t *testi
 				require.NoError(t, err)
 				require.Equal(t, "new-access", persisted.GetCredential("access_token"))
 			}}
-			svc := service.NewOnboardingService(client, &onboardingTierTestAdmin{accounts: accounts}, oauth, service.NewSubscriptionService(NewGroupRepository(client, integrationDB), subscriptions, nil, client, nil), &config.Config{JWT: config.JWTConfig{Secret: "reauthorization-integration-secret"}}, nil, cache)
+			svc := service.NewServiceCenterService(client, &onboardingTierTestAdmin{accounts: accounts}, oauth, service.NewSubscriptionService(NewGroupRepository(client, integrationDB), subscriptions, nil, client, nil), &config.Config{JWT: config.JWTConfig{Secret: "reauthorization-integration-secret"}}, nil, cache)
 			start, err := svc.StartOwnedAccountReauthorization(ctx, user.ID, account.ID)
 			require.NoError(t, err)
 			authorization, err := url.Parse(start.AuthURL)

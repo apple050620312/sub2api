@@ -47,7 +47,7 @@ func TestOnboardingReauthorizationIdentityRequiresSameWorkspaceAndUser(t *testin
 }
 
 func TestOnboardingReauthorizationStateBindsUserAccountAndOAuthSession(t *testing.T) {
-	svc := &OnboardingService{cfg: &config.Config{JWT: config.JWTConfig{Secret: "reauthorization-test-secret"}}}
+	svc := &ServiceCenterService{cfg: &config.Config{JWT: config.JWTConfig{Secret: "reauthorization-test-secret"}}}
 	state, err := svc.signState(7, onboardingReauthorizationKind(42, "session"))
 	require.NoError(t, err)
 	for _, scenario := range []struct {
@@ -73,7 +73,7 @@ func TestOnboardingReauthorizationStartsWithoutAccountTemplate(t *testing.T) {
 		}
 		oauth := NewOpenAIOAuthService(nil, nil)
 		t.Cleanup(oauth.Stop)
-		svc := NewOnboardingService(client, &onboardingTestAdmin{accounts: []Account{account}}, oauth, nil, &config.Config{JWT: config.JWTConfig{Secret: "reauthorization-test-secret"}}, nil, nil)
+		svc := NewServiceCenterService(client, &onboardingTestAdmin{accounts: []Account{account}}, oauth, nil, &config.Config{JWT: config.JWTConfig{Secret: "reauthorization-test-secret"}}, nil, nil)
 		mock.ExpectQuery("SELECT config FROM onboarding_config").WillReturnRows(sqlmock.NewRows([]string{"config"}).AddRow(`{"enabled":true,"account_template_id":0}`))
 		now := time.Now()
 		mock.ExpectQuery("SELECT user_id, discord_user_id").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{"user_id", "discord_user_id", "discord_username", "guild_id", "role_id", "status", "last_checked_at", "created_at", "updated_at"}).AddRow(7, "discord-7", "tester", "guild", "role", "active", now, now, now))
@@ -120,7 +120,7 @@ func TestOnboardingReauthorizationPreservesSettingsAndQuotaAfterCommit(t *testin
 			expires := now.Add(24 * time.Hour)
 			repo := &onboardingTestSubscriptions{subs: []UserSubscription{{ID: 1, UserID: 7, GroupID: 9, StartsAt: now.Add(-time.Hour), ExpiresAt: expires, Status: SubscriptionStatusActive, DailyUsageUSD: 2, WeeklyUsageUSD: 8, MonthlyUsageUSD: 16, Notes: onboardingManagedNotes + ":account"}}}
 			invalidator := &onboardingReauthorizationInvalidator{check: func() { require.NoError(t, mock.ExpectationsWereMet()) }}
-			svc := NewOnboardingService(client, admin, &OpenAIOAuthService{}, &SubscriptionService{userSubRepo: repo}, nil, nil, invalidator)
+			svc := NewServiceCenterService(client, admin, &OpenAIOAuthService{}, &SubscriptionService{userSubRepo: repo}, nil, nil, invalidator)
 			mock.ExpectBegin()
 			mock.ExpectExec("SELECT id FROM onboarding_config").WillReturnResult(sqlmock.NewResult(0, 1))
 			mock.ExpectExec("SELECT id FROM users").WithArgs(int64(7)).WillReturnResult(sqlmock.NewResult(0, 1))

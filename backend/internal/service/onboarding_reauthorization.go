@@ -37,7 +37,7 @@ func validateOnboardingReauthorizationIdentity(account *Account, token *OpenAITo
 	return ErrOnboardingReauthorizationIdentity
 }
 
-func (s *OnboardingService) StartOwnedAccountReauthorization(ctx context.Context, userID, accountID int64) (*OnboardingOAuthStart, error) {
+func (s *ServiceCenterService) StartOwnedAccountReauthorization(ctx context.Context, userID, accountID int64) (*OnboardingOAuthStart, error) {
 	stored, err := s.requireDiscord(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -61,7 +61,7 @@ func (s *OnboardingService) StartOwnedAccountReauthorization(ctx context.Context
 	return &OnboardingOAuthStart{AuthURL: result.AuthURL, SessionID: result.SessionID, OnboardingState: state, RedirectURI: redirectURI}, nil
 }
 
-func (s *OnboardingService) CompleteOwnedAccountReauthorization(ctx context.Context, userID, accountID int64, sessionID, code, oauthState, onboardingState string) (*Account, error) {
+func (s *ServiceCenterService) CompleteOwnedAccountReauthorization(ctx context.Context, userID, accountID int64, sessionID, code, oauthState, onboardingState string) (*Account, error) {
 	if err := s.verifyState(onboardingState, onboardingReauthorizationKind(accountID, sessionID), userID); err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (s *OnboardingService) CompleteOwnedAccountReauthorization(ctx context.Cont
 	return s.applyOwnedAccountReauthorization(ctx, userID, accountID, token)
 }
 
-func (s *OnboardingService) applyOwnedAccountReauthorization(ctx context.Context, userID, accountID int64, token *OpenAITokenInfo) (*Account, error) {
+func (s *ServiceCenterService) applyOwnedAccountReauthorization(ctx context.Context, userID, accountID int64, token *OpenAITokenInfo) (*Account, error) {
 	var updated *Account
 	err := s.mutateUser(ctx, userID, accountID, func(ctx context.Context) error {
 		account, err := s.ownedAccount(ctx, userID, accountID)

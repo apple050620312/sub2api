@@ -72,7 +72,7 @@ func selectOnboardingSubscription(units int, rules map[string]OnboardingSubscrip
 	return selected
 }
 
-func normalizeOnboardingSubscriptionRules(raw []byte, config *OnboardingConfig) error {
+func normalizeOnboardingSubscriptionRules(raw []byte, config *ServiceCenterConfig) error {
 	var legacy struct {
 		Rules map[string]struct {
 			OnboardingSubscriptionRule

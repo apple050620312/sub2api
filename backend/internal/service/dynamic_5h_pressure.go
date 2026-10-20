@@ -27,7 +27,7 @@ const (
 
 var ErrDynamic5hPressureLimitExceeded = infraerrors.TooManyRequests(
 	"DYNAMIC_5H_PRESSURE_LIMIT_EXCEEDED",
-	"Your temporary rolling five-hour usage limit has been reached. Please retry after it recovers.",
+	"已达到滚动五小时限额，请等待额度恢复后重试。",
 )
 
 type Dynamic5hPressureStatus struct {

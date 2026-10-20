@@ -62,17 +62,17 @@ func (h *DashboardHandler) GetDynamic5hPressureOverview(c *gin.Context) {
 
 func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
 	if h.dynamic5hPressure == nil {
-		response.InternalError(c, "Dynamic 5h service unavailable")
+		response.InternalError(c, "五小时限额服务暂时不可用")
 		return
 	}
 	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.BadRequest(c, "用户 ID 无效")
 		return
 	}
 	var req Dynamic5hPolicyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		response.BadRequest(c, "Invalid policy")
+		response.BadRequest(c, "限额策略格式无效")
 		return
 	}
 	if err := h.dynamic5hPressure.SetUserPolicy(c.Request.Context(), userID, service.Dynamic5hUserPolicy{Exempt: req.Exempt}, getAdminIDFromContext(c)); err != nil {
@@ -84,12 +84,12 @@ func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {
 
 func (h *DashboardHandler) ResetDynamic5hUser(c *gin.Context) {
 	if h.dynamic5hPressure == nil {
-		response.InternalError(c, "Dynamic 5h service unavailable")
+		response.InternalError(c, "五小时限额服务暂时不可用")
 		return
 	}
 	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
 	if err != nil {
-		response.BadRequest(c, "Invalid user ID")
+		response.BadRequest(c, "用户 ID 无效")
 		return
 	}
 	if err := h.dynamic5hPressure.ResetUserUsage(c.Request.Context(), userID, getAdminIDFromContext(c)); err != nil {

@@ -10,14 +10,14 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type OnboardingHandler struct {
-	service  *service.OnboardingService
+type ServiceCenterHandler struct {
+	service  *service.ServiceCenterService
 	auth     *service.AuthService
 	settings *service.SettingService
 }
 
-func NewOnboardingHandler(onboarding *service.OnboardingService, auth *service.AuthService, settings *service.SettingService) *OnboardingHandler {
-	return &OnboardingHandler{service: onboarding, auth: auth, settings: settings}
+func NewServiceCenterHandler(onboarding *service.ServiceCenterService, auth *service.AuthService, settings *service.SettingService) *ServiceCenterHandler {
+	return &ServiceCenterHandler{service: onboarding, auth: auth, settings: settings}
 }
 
 func onboardingSubject(c *gin.Context) (middleware.AuthSubject, bool) {
@@ -29,7 +29,7 @@ func onboardingSubject(c *gin.Context) (middleware.AuthSubject, bool) {
 	return subject, true
 }
 
-func (h *OnboardingHandler) GetUserOverview(c *gin.Context) {
+func (h *ServiceCenterHandler) GetUserOverview(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -46,7 +46,7 @@ type onboardingRedirectRequest struct {
 	RedirectURI string `json:"redirect_uri"`
 }
 
-func (h *OnboardingHandler) StartDiscord(c *gin.Context) {
+func (h *ServiceCenterHandler) StartDiscord(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -67,7 +67,7 @@ type onboardingDiscordCompleteRequest struct {
 	RedirectURI string `json:"redirect_uri"`
 }
 
-func (h *OnboardingHandler) CompleteDiscord(c *gin.Context) {
+func (h *ServiceCenterHandler) CompleteDiscord(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -85,7 +85,7 @@ func (h *OnboardingHandler) CompleteDiscord(c *gin.Context) {
 	response.Success(c, binding)
 }
 
-func (h *OnboardingHandler) StartOpenAI(c *gin.Context) {
+func (h *ServiceCenterHandler) StartOpenAI(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -108,7 +108,7 @@ type onboardingOpenAICompleteRequest struct {
 	RedirectURI     string `json:"redirect_uri"`
 }
 
-func (h *OnboardingHandler) CompleteOpenAI(c *gin.Context) {
+func (h *ServiceCenterHandler) CompleteOpenAI(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -126,7 +126,7 @@ func (h *OnboardingHandler) CompleteOpenAI(c *gin.Context) {
 	response.Success(c, gin.H{"account_id": account.ID, "name": account.Name, "plan_type": account.GetCredential("plan_type")})
 }
 
-func (h *OnboardingHandler) StartOwnedAccountReauthorization(c *gin.Context) {
+func (h *ServiceCenterHandler) StartOwnedAccountReauthorization(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -144,7 +144,7 @@ func (h *OnboardingHandler) StartOwnedAccountReauthorization(c *gin.Context) {
 	response.Success(c, result)
 }
 
-func (h *OnboardingHandler) CompleteOwnedAccountReauthorization(c *gin.Context) {
+func (h *ServiceCenterHandler) CompleteOwnedAccountReauthorization(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -186,7 +186,7 @@ type onboardingDiscordConfigRequest struct {
 	RedirectURI  string `json:"redirect_uri"`
 }
 
-func (h *OnboardingHandler) GetAdminOverview(c *gin.Context) {
+func (h *ServiceCenterHandler) GetAdminOverview(c *gin.Context) {
 	value, err := h.service.AdminOverview(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -195,7 +195,7 @@ func (h *OnboardingHandler) GetAdminOverview(c *gin.Context) {
 	response.Success(c, value)
 }
 
-func (h *OnboardingHandler) GetAdminConfig(c *gin.Context) {
+func (h *ServiceCenterHandler) GetAdminConfig(c *gin.Context) {
 	value, err := h.service.GetConfig(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -204,7 +204,7 @@ func (h *OnboardingHandler) GetAdminConfig(c *gin.Context) {
 	response.Success(c, value)
 }
 
-func (h *OnboardingHandler) ListDiscordChannels(c *gin.Context) {
+func (h *ServiceCenterHandler) ListDiscordChannels(c *gin.Context) {
 	channels, err := h.service.ListDiscordChannels(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -213,13 +213,13 @@ func (h *OnboardingHandler) ListDiscordChannels(c *gin.Context) {
 	response.Success(c, channels)
 }
 
-func (h *OnboardingHandler) UpdateAdminConfig(c *gin.Context) {
+func (h *ServiceCenterHandler) UpdateAdminConfig(c *gin.Context) {
 	var req onboardingConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "请求格式无效："+err.Error())
 		return
 	}
-	next := service.OnboardingConfig{Enabled: true, SubscriptionRules: req.SubscriptionRules, OpenAIRedirectURI: req.OpenAIRedirectURI, CCSwitchDownloadURL: req.CCSwitchDownloadURL, Discord: service.OnboardingDiscordConfig{ClientID: req.Discord.ClientID, ClientSecret: req.Discord.ClientSecret, BotToken: req.Discord.BotToken, GuildID: req.Discord.GuildID, RoleID: req.Discord.RoleID, RedirectURI: req.Discord.RedirectURI}}
+	next := service.ServiceCenterConfig{Enabled: true, SubscriptionRules: req.SubscriptionRules, OpenAIRedirectURI: req.OpenAIRedirectURI, CCSwitchDownloadURL: req.CCSwitchDownloadURL, Discord: service.OnboardingDiscordConfig{ClientID: req.Discord.ClientID, ClientSecret: req.Discord.ClientSecret, BotToken: req.Discord.BotToken, GuildID: req.Discord.GuildID, RoleID: req.Discord.RoleID, RedirectURI: req.Discord.RedirectURI}}
 	next.AccountTemplateID = req.AccountTemplateID
 	next.PoolReset = req.PoolReset
 	if req.Enabled != nil {
@@ -237,7 +237,7 @@ type onboardingBindAccountRequest struct {
 	UserID int64 `json:"user_id" binding:"required,gt=0"`
 }
 
-func (h *OnboardingHandler) BindAccount(c *gin.Context) {
+func (h *ServiceCenterHandler) BindAccount(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || accountID <= 0 {
 		response.BadRequest(c, "账号 ID 无效")
@@ -255,7 +255,7 @@ func (h *OnboardingHandler) BindAccount(c *gin.Context) {
 	response.Success(c, gin.H{"account_id": accountID, "user_id": req.UserID})
 }
 
-func (h *OnboardingHandler) UnbindAccount(c *gin.Context) {
+func (h *ServiceCenterHandler) UnbindAccount(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || accountID <= 0 {
 		response.BadRequest(c, "账号 ID 无效")
@@ -268,7 +268,7 @@ func (h *OnboardingHandler) UnbindAccount(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *OnboardingHandler) SetOwnedAccountPaused(c *gin.Context) {
+func (h *ServiceCenterHandler) SetOwnedAccountPaused(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -292,7 +292,7 @@ func (h *OnboardingHandler) SetOwnedAccountPaused(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *OnboardingHandler) DeleteOwnedAccount(c *gin.Context) {
+func (h *ServiceCenterHandler) DeleteOwnedAccount(c *gin.Context) {
 	subject, ok := onboardingSubject(c)
 	if !ok {
 		return
@@ -309,7 +309,7 @@ func (h *OnboardingHandler) DeleteOwnedAccount(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *OnboardingHandler) ListDiscordMembers(c *gin.Context) {
+func (h *ServiceCenterHandler) ListDiscordMembers(c *gin.Context) {
 	members, err := h.service.ListDiscordMembers(c.Request.Context(), c.Query("search"))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -318,7 +318,7 @@ func (h *OnboardingHandler) ListDiscordMembers(c *gin.Context) {
 	response.Success(c, members)
 }
 
-func (h *OnboardingHandler) BindDiscordMember(c *gin.Context) {
+func (h *ServiceCenterHandler) BindDiscordMember(c *gin.Context) {
 	var req struct {
 		UserID        int64  `json:"user_id" binding:"required,gt=0"`
 		DiscordUserID string `json:"discord_user_id" binding:"required"`

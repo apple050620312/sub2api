@@ -221,7 +221,7 @@ func ProvideOpenAIQuotaAutoResetService(
 	return service
 }
 
-func ProvideServicePoolResetService(onboarding *OnboardingService) *ServicePoolResetService {
+func ProvideServicePoolResetService(onboarding *ServiceCenterService) *ServicePoolResetService {
 	svc := NewServicePoolResetService(onboarding)
 	svc.Start()
 	return svc
@@ -948,7 +948,7 @@ var ProviderSet = wire.NewSet(
 	NewAliyunCaptchaService,
 	NewSubscriptionService,
 	wire.Bind(new(DefaultSubscriptionAssigner), new(*SubscriptionService)),
-	NewOnboardingService,
+	NewServiceCenterService,
 	ProvideConcurrencyService,
 	ProvideUserMessageQueueService,
 	NewUsageRecordWorkerPool,

@@ -6,7 +6,7 @@
         <div v-for="item in details" :key="item.label"><dt class="text-gray-500">{{ item.label }}</dt><dd class="mt-1 break-words font-medium text-gray-900 dark:text-gray-100">{{ item.value }}</dd></div>
       </dl>
       <div v-for="window in windows" :key="window.label" class="space-y-2">
-        <Dynamic5hUsageBar :label="window.label" :value="window.value || 0" />
+        <UsageWindowBar :label="window.label" :value="window.value || 0" />
         <p class="text-xs text-gray-500">{{ window.value === undefined ? '暂无上游用量数据' : `重置时间：${time(window.reset)}` }}</p>
       </div>
     </div>
@@ -15,12 +15,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import BaseDialog from './BaseDialog.vue'
-import Dynamic5hUsageBar from './Dynamic5hUsageBar.vue'
-import type { OnboardingAccountSummary } from '@/api/user'
+import BaseDialog from '@/components/common/BaseDialog.vue'
+import UsageWindowBar from './UsageWindowBar.vue'
+import type { ServiceAccountSummary } from '@/api/serviceCenter'
 import { serviceAccountPlanLabel } from '@/utils/serviceCenter'
 
-const props = defineProps<{ account: OnboardingAccountSummary | null }>()
+const props = defineProps<{ account: ServiceAccountSummary | null }>()
 defineEmits<{ close: [] }>()
 const time = (value?: string) => value ? new Date(value).toLocaleString() : '暂无'
 const details = computed(() => props.account ? [

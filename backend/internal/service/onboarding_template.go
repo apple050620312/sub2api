@@ -13,7 +13,7 @@ func validOnboardingTemplate(account *Account) bool {
 	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth && account.ParentAccountID == nil
 }
 
-func (s *OnboardingService) accountTemplate(ctx context.Context, id int64) (*Account, error) {
+func (s *ServiceCenterService) accountTemplate(ctx context.Context, id int64) (*Account, error) {
 	if id <= 0 || s.admin == nil {
 		return nil, ErrOnboardingTemplateRequired
 	}

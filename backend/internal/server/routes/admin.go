@@ -51,7 +51,7 @@ func RegisterAdminRoutes(
 
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
-		registerOnboardingRoutes(admin, h)
+		registerServiceCenterRoutes(admin, h)
 
 		// Gemini OAuth
 		registerGeminiOAuthRoutes(admin, h)
@@ -134,22 +134,19 @@ func RegisterAdminRoutes(
 	}
 }
 
-func registerOnboardingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+func registerServiceCenterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	onboarding := admin.Group("/onboarding")
 	{
-		onboarding.GET("", h.Admin.Onboarding.GetAdminOverview)
-		onboarding.GET("/config", h.Admin.Onboarding.GetAdminConfig)
-		onboarding.PUT("/config", h.Admin.Onboarding.UpdateAdminConfig)
-		onboarding.GET("/gmail-reset", h.Admin.Onboarding.GetGmailReset)
-		onboarding.PUT("/gmail-reset", h.Admin.Onboarding.UpdateGmailReset)
-		onboarding.POST("/gmail-reset/oauth/start", h.Admin.Onboarding.StartGmailResetOAuth)
-		onboarding.POST("/gmail-reset/oauth/complete", h.Admin.Onboarding.CompleteGmailResetOAuth)
-		onboarding.DELETE("/gmail-reset/oauth", h.Admin.Onboarding.DisconnectGmailReset)
-		onboarding.GET("/discord/members", h.Admin.Onboarding.ListDiscordMembers)
-		onboarding.GET("/discord/channels", h.Admin.Onboarding.ListDiscordChannels)
-		onboarding.POST("/discord/bind", h.Admin.Onboarding.BindDiscordMember)
-		onboarding.POST("/accounts/:id/bind", h.Admin.Onboarding.BindAccount)
-		onboarding.DELETE("/accounts/:id/bind", h.Admin.Onboarding.UnbindAccount)
+		onboarding.GET("", h.Admin.ServiceCenter.GetAdminOverview)
+		onboarding.GET("/config", h.Admin.ServiceCenter.GetAdminConfig)
+		onboarding.PUT("/config", h.Admin.ServiceCenter.UpdateAdminConfig)
+		onboarding.GET("/reset-monitor", h.Admin.ServiceCenter.GetResetMonitor)
+		onboarding.PUT("/reset-monitor", h.Admin.ServiceCenter.UpdateResetMonitor)
+		onboarding.GET("/discord/members", h.Admin.ServiceCenter.ListDiscordMembers)
+		onboarding.GET("/discord/channels", h.Admin.ServiceCenter.ListDiscordChannels)
+		onboarding.POST("/discord/bind", h.Admin.ServiceCenter.BindDiscordMember)
+		onboarding.POST("/accounts/:id/bind", h.Admin.ServiceCenter.BindAccount)
+		onboarding.DELETE("/accounts/:id/bind", h.Admin.ServiceCenter.UnbindAccount)
 	}
 }
 

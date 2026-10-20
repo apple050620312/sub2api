@@ -3,14 +3,14 @@
     <div class="space-y-8">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('dynamic5h.adminWorkspaceTitle') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('dynamic5h.workspaceDescription') }}</p>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('serviceCenter.adminTitle') }}</h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('serviceCenter.description') }}</p>
         </div>
         <button class="btn btn-secondary inline-flex h-9 w-9 items-center justify-center" :disabled="loading" :title="t('admin.pressure5hPage.refresh')" @click="load">
           <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
         </button>
       </header>
-      <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('dynamic5h.adminWorkspaceTitle')">
+      <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('serviceCenter.adminTitle')">
         <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
         <button v-for="panel in setupTabs" :key="panel.value" role="tab" :aria-selected="tab === panel.value" :class="tab === panel.value ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = panel.value">{{ panel.label }}</button>
       </div>
@@ -30,7 +30,7 @@
             <div class="border-b border-gray-100 p-6 dark:border-dark-700"><h2 class="font-semibold">{{ t('admin.pressure5hPage.users') }}</h2><p class="mt-2 text-sm text-gray-500">五小时额度为有效订阅七天美元额度的 15%。非尖峰不额外限流。</p></div>
             <DataTable :columns="columns" :data="overview.users" row-key="user_id" :actions-count="2">
               <template #cell-email="{ row }"><p class="whitespace-nowrap font-medium">{{ row.email || '已删除用户' }}</p><span class="mt-1 inline-block text-xs text-gray-500">{{ t(`admin.pressure5hPage.${row.active ? 'active' : 'inactive'}`) }}</span></template>
-              <template #cell-usage="{ row }"><div class="w-44"><Dynamic5hUsageBar :label="t('admin.pressure5hPage.usage')" :value="row.usage_percent" /><p class="mt-2 text-xs text-gray-500">{{ money(row.usage_usd) }} / {{ money(row.limit_usd) }}</p></div></template>
+              <template #cell-usage="{ row }"><div class="w-44"><UsageWindowBar :label="t('admin.pressure5hPage.usage')" :value="row.usage_percent" /><p class="mt-2 text-xs text-gray-500">{{ money(row.usage_usd) }} / {{ money(row.limit_usd) }}</p></div></template>
               <template #cell-remaining_percent="{ value }">{{ value.toFixed(1) }}%</template>
               <template #cell-recover_at="{ value }"><span class="whitespace-nowrap">{{ formatTime(value) }}</span></template>
               <template #cell-actions="{ row }"><div class="flex flex-wrap gap-2"><button class="btn btn-secondary btn-sm" :disabled="saving" :aria-pressed="row.exempt" @click="askAction(row, 'exempt')">{{ row.exempt ? '取消豁免' : '豁免限流' }}</button><button class="btn btn-secondary btn-sm" :disabled="saving" @click="askAction(row, 'reset')">重置用量</button></div></template>
@@ -46,7 +46,7 @@
         </div>
       </div>
       </div>
-      <div v-show="tab !== 'usage'" role="tabpanel"><OnboardingView :panel="tab === 'usage' ? 'accounts' : tab" /></div>
+      <div v-show="tab !== 'usage'" role="tabpanel"><ServiceManagementPanel :panel="tab === 'usage' ? 'accounts' : tab" /></div>
       <ConfirmDialog :show="!!confirmation" :title="confirmation?.title || ''" :message="confirmation?.message || ''" @cancel="confirmation = null" @confirm="confirmAction" />
     </div>
   </AppLayout>
@@ -57,13 +57,13 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
+import UsageWindowBar from '@/components/service/UsageWindowBar.vue'
 import Icon from '@/components/icons/Icon.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore } from '@/stores/app'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
-import OnboardingView from '@/views/admin/OnboardingView.vue'
+import ServiceManagementPanel from '@/components/service/ServiceManagementPanel.vue'
 import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolicy } from '@/api/admin/dashboard'
 import type { Dynamic5hAdminOverview, Dynamic5hAdminUserStatus } from '@/types'
 
@@ -71,7 +71,7 @@ const { t } = useI18n()
 type SetupTab = 'accounts' | 'discord' | 'onboarding' | 'reset'
 const setupTabs: Array<{ value: SetupTab; label: string }> = [{ value: 'accounts', label: '用户与账号' }, { value: 'discord', label: 'Discord' }, { value: 'onboarding', label: '引导与订阅' }, { value: 'reset', label: '重置监测' }]
 const route = useRoute()
-const tab = ref<'usage' | SetupTab>(String(route.query.state || '').startsWith('gmail-reset.') ? 'reset' : 'usage')
+const tab = ref<'usage' | SetupTab>(route.query.tab === 'reset' ? 'reset' : 'usage')
 const money = (value = 0) => `$${value.toFixed(2)}`
 const overview = ref<Dynamic5hAdminOverview | null>(null)
 const loading = ref(false)

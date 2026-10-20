@@ -95,17 +95,16 @@ type openAICreditsSnapshot struct {
 // Fields not relevant to the quota card are intentionally omitted to keep the
 // surface narrow; full upstream payload preservation is unnecessary.
 type OpenAIQuotaUsage struct {
-	UserID                     string                       `json:"user_id,omitempty"`
-	AccountID                  string                       `json:"account_id,omitempty"`
-	Email                      string                       `json:"email,omitempty"`
-	PlanType                   string                       `json:"plan_type,omitempty"`
-	RateLimit                  *OpenAIRateLimit             `json:"rate_limit,omitempty"`
-	AdditionalRateLimits       []OpenAIAdditionalRateLimit  `json:"additional_rate_limits,omitempty"`
-	RateLimitResetCredits      *OpenAIRateLimitResetCredits `json:"rate_limit_reset_credits,omitempty"`
-	Credits                    *OpenAICredits               `json:"credits,omitempty"`
-	FetchedAt                  int64                        `json:"fetched_at"`
-	autoResetCandidates        []openAIAutoResetCreditCandidate
-	ResetCreditDetailsComplete bool `json:"-"`
+	UserID                string                       `json:"user_id,omitempty"`
+	AccountID             string                       `json:"account_id,omitempty"`
+	Email                 string                       `json:"email,omitempty"`
+	PlanType              string                       `json:"plan_type,omitempty"`
+	RateLimit             *OpenAIRateLimit             `json:"rate_limit,omitempty"`
+	AdditionalRateLimits  []OpenAIAdditionalRateLimit  `json:"additional_rate_limits,omitempty"`
+	RateLimitResetCredits *OpenAIRateLimitResetCredits `json:"rate_limit_reset_credits,omitempty"`
+	Credits               *OpenAICredits               `json:"credits,omitempty"`
+	FetchedAt             int64                        `json:"fetched_at"`
+	autoResetCandidates   []openAIAutoResetCreditCandidate
 }
 
 // OpenAIQuotaResetCredit captures the redeemed credit metadata returned by the
@@ -217,7 +216,6 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
 	if details != nil {
 		payload.autoResetCandidates = details.AutoResetCandidates
-		payload.ResetCreditDetailsComplete = details.ObservationComplete
 		hasDetailCount := details.AvailableCount != nil
 		if payload.RateLimitResetCredits == nil {
 			payload.RateLimitResetCredits = &OpenAIRateLimitResetCredits{}

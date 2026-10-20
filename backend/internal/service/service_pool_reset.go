@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -15,7 +16,7 @@ import (
 )
 
 type ServicePoolResetService struct {
-	onboarding *OnboardingService
+	onboarding *ServiceCenterService
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
@@ -23,7 +24,7 @@ type ServicePoolResetService struct {
 	stop       sync.Once
 }
 
-func NewServicePoolResetService(onboarding *OnboardingService) *ServicePoolResetService {
+func NewServicePoolResetService(onboarding *ServiceCenterService) *ServicePoolResetService {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &ServicePoolResetService{onboarding: onboarding, ctx: ctx, cancel: cancel}
 }
@@ -42,10 +43,10 @@ func (s *ServicePoolResetService) Start() {
 				case <-timer.C:
 					ctx, cancel := context.WithTimeout(s.ctx, 4*time.Minute)
 					if err := s.RunOnce(ctx); err != nil && s.ctx.Err() == nil {
-						slog.Warn("gmail_reset_monitor_failed", "error", err)
+						slog.Warn("discord_reset_monitor_failed", "error", err)
 					}
 					cancel()
-					timer.Reset(30 * time.Second)
+					timer.Reset(5 * time.Second)
 				}
 			}
 		}()
@@ -66,7 +67,7 @@ func (s *ServicePoolResetService) RunOnce(ctx context.Context) error {
 	if err != nil || !config.PoolReset.Enabled {
 		return err
 	}
-	stored, err := s.onboarding.loadGmailReset(ctx)
+	stored, err := s.onboarding.loadResetMonitor(ctx)
 	if err != nil {
 		return err
 	}
@@ -80,13 +81,18 @@ func (s *ServicePoolResetService) RunOnce(ctx context.Context) error {
 	if leaseErr != nil || !acquired {
 		return leaseErr
 	}
+	retryAfterSeconds := stored.Config.PollSeconds
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _ = s.onboarding.db.ExecContext(cleanup, `UPDATE service_pool_reset_state SET lease_until='-infinity',lease_token='',next_check_at=CASE WHEN (SELECT version FROM service_pool_reset_gmail WHERE id=1)=$3 THEN NOW()+($1 * INTERVAL '1 minute') ELSE NOW() END WHERE id=1 AND lease_token=$2`, stored.Config.PollMinutes, leaseToken, stored.Version)
+		_, _ = s.onboarding.db.ExecContext(cleanup, `UPDATE service_pool_reset_state SET lease_until='-infinity',lease_token='',next_check_at=CASE WHEN (SELECT version FROM service_pool_reset_monitor WHERE id=1)=$3 THEN NOW()+($1 * INTERVAL '1 second') ELSE NOW() END WHERE id=1 AND lease_token=$2`, retryAfterSeconds, leaseToken, stored.Version)
 	}()
-	if err := s.gmailResetRound(ctx, stored, leaseToken); err != nil {
-		_ = s.gmailResetStatus(ctx, "error", err.Error(), leaseToken)
+	if err := s.resetMonitorRound(ctx, stored, leaseToken); err != nil {
+		var rateLimit *resetMonitorRateLimitError
+		if errors.As(err, &rateLimit) && int(rateLimit.RetryAfter.Seconds()) > retryAfterSeconds {
+			retryAfterSeconds = int(rateLimit.RetryAfter.Seconds())
+		}
+		_ = s.resetMonitorStatus(ctx, "error", err.Error(), leaseToken)
 		return err
 	}
 	return s.flushResetEffects(ctx)
@@ -153,7 +159,7 @@ func (s *ServicePoolResetService) flushResetEffects(ctx context.Context) error {
 	return s.flushResetNotifications(ctx)
 }
 
-func (s *OnboardingService) poolResetStatus(ctx context.Context) (*ServicePoolResetStatus, error) {
+func (s *ServiceCenterService) poolResetStatus(ctx context.Context) (*ServicePoolResetStatus, error) {
 	rows, err := s.client(ctx).QueryContext(ctx, `SELECT state FROM service_pool_reset_state WHERE id=1`)
 	if err != nil {
 		return nil, err

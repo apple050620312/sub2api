@@ -16,7 +16,7 @@ const discordLoginStateCookie = "discord_login_state"
 const discordLoginStatePrefix = "discord-login."
 const discordLoginCookiePath = "/api/v1/auth/oauth/discord"
 
-func (h *OnboardingHandler) DiscordOnlyAuthGuard(c *gin.Context) {
+func (h *ServiceCenterHandler) DiscordOnlyAuthGuard(c *gin.Context) {
 	if h == nil || h.service == nil {
 		c.Next()
 		return
@@ -30,7 +30,7 @@ func (h *OnboardingHandler) DiscordOnlyAuthGuard(c *gin.Context) {
 	}
 }
 
-func (h *OnboardingHandler) DiscordLoginStatus(c *gin.Context) {
+func (h *ServiceCenterHandler) DiscordLoginStatus(c *gin.Context) {
 	ready, err := h.service.DiscordLoginReady(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -39,7 +39,7 @@ func (h *OnboardingHandler) DiscordLoginStatus(c *gin.Context) {
 	response.Success(c, gin.H{"enabled": true, "ready": ready})
 }
 
-func (h *OnboardingHandler) DiscordLoginStart(c *gin.Context) {
+func (h *ServiceCenterHandler) DiscordLoginStart(c *gin.Context) {
 	state, err := oauth.GenerateState()
 	if err != nil {
 		response.ErrorFrom(c, service.ErrServiceUnavailable)
@@ -56,7 +56,7 @@ func (h *OnboardingHandler) DiscordLoginStart(c *gin.Context) {
 	response.Success(c, gin.H{"authorize_url": authorizeURL})
 }
 
-func (h *OnboardingHandler) DiscordLoginComplete(c *gin.Context) {
+func (h *ServiceCenterHandler) DiscordLoginComplete(c *gin.Context) {
 	var req struct {
 		Code  string `json:"code" binding:"required"`
 		State string `json:"state" binding:"required"`

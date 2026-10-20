@@ -18,7 +18,7 @@ type OnboardingDiscordChannel struct {
 	Type int    `json:"type"`
 }
 
-func (s *OnboardingService) ListDiscordChannels(ctx context.Context) ([]OnboardingDiscordChannel, error) {
+func (s *ServiceCenterService) ListDiscordChannels(ctx context.Context) ([]OnboardingDiscordChannel, error) {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -64,7 +64,7 @@ ORDER BY reset_at LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING id,notification_chan
 	return err
 }
 
-func (s *ServicePoolResetService) sendResetNotification(ctx context.Context, stored *onboardingStoredConfig, nonce, channel, content string) (string, string, string) {
+func (s *ServicePoolResetService) sendResetNotification(ctx context.Context, stored *serviceCenterStoredConfig, nonce, channel, content string) (string, string, string) {
 	if stored.Discord.BotToken == "" {
 		return "failed", "", "bot_not_configured"
 	}
@@ -101,12 +101,12 @@ func (s *ServicePoolResetService) sendResetNotification(ctx context.Context, sto
 	return "sent", message.ID, ""
 }
 
-func (s *OnboardingService) validateResetChannel(ctx context.Context, cfg ServicePoolResetConfig, discord OnboardingDiscordConfig) error {
+func (s *ServiceCenterService) validateResetChannel(ctx context.Context, cfg ServicePoolResetConfig, discord OnboardingDiscordConfig) error {
 	if !cfg.Enabled {
 		return nil
 	}
 	var channels []OnboardingDiscordChannel
-	stored := &onboardingStoredConfig{OnboardingConfig: OnboardingConfig{Discord: discord}}
+	stored := &serviceCenterStoredConfig{ServiceCenterConfig: ServiceCenterConfig{Discord: discord}}
 	if err := s.discordBotRequest(ctx, stored, http.MethodGet, "/channels", &channels); err != nil {
 		return fmt.Errorf("无法读取 Discord 通知频道，请检查机器人和服务器配置：%w", err)
 	}

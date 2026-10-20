@@ -13,7 +13,7 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return { ...actual, useI18n: () => ({ t: (key: string) => key }) }
 })
-vi.mock('@/api/user', () => ({
+vi.mock('@/api/serviceCenter', () => ({
   getDynamic5hPressure: getUserStatus,
   default: { getDynamic5hPressure: getUserStatus },
 }))
@@ -24,13 +24,14 @@ vi.mock('@/api/admin/dashboard', () => ({
   default: { getDynamic5hPressureOverview: getAdminOverview },
 }))
 
-import UserDynamic5hPressureView from '@/views/user/Dynamic5hPressureView.vue'
-import AdminDynamic5hPressureView from '@/views/admin/Dynamic5hPressureView.vue'
+import UserServiceCenterView from '@/views/user/ServiceCenterView.vue'
+import AdminServiceManagementView from '@/views/admin/ServiceManagementView.vue'
 
 const global = {
   stubs: {
     AppLayout: { template: '<div><slot /></div>' },
-    OnboardingView: true,
+    ServiceSetupPanel: true,
+    ServiceManagementPanel: true,
     Icon: true,
     LoadingSpinner: true,
   },
@@ -51,7 +52,7 @@ describe('dedicated Dynamic 5h pages', () => {
         ],
       },
     })
-    const wrapper = mount(UserDynamic5hPressureView, { global, attachTo: document.body })
+    const wrapper = mount(UserServiceCenterView, { global, attachTo: document.body })
     await flushPromises()
     const poolPanel = wrapper.findAll('[role="tabpanel"]')[1]!
     expect(poolPanel.isVisible()).toBe(false)
@@ -79,7 +80,7 @@ describe('dedicated Dynamic 5h pages', () => {
       recover_at: '2026-09-18T05:00:00Z',
     })
 
-    const wrapper = mount(UserDynamic5hPressureView, { global })
+    const wrapper = mount(UserServiceCenterView, { global })
     await flushPromises()
 
     expect(wrapper.text()).toContain('dynamic5h.limited')
@@ -99,7 +100,7 @@ describe('dedicated Dynamic 5h pages', () => {
       remaining_percent: 0,
     })
 
-    const wrapper = mount(UserDynamic5hPressureView, { global })
+    const wrapper = mount(UserServiceCenterView, { global })
     await flushPromises()
 
     expect(wrapper.text()).toContain('dynamic5h.unavailable')
@@ -120,14 +121,14 @@ describe('dedicated Dynamic 5h pages', () => {
       seven_day_limit_usd: 100,
       window_started_at: '2026-09-18T00:00:00Z',
     })
-    const wrapper = mount(UserDynamic5hPressureView, { global, attachTo: document.body })
+    const wrapper = mount(UserServiceCenterView, { global, attachTo: document.body })
     await flushPromises()
     expect(wrapper.text()).toContain('dynamic5h.available')
     expect(wrapper.text()).not.toContain('dynamic5h.limited')
     expect(wrapper.text()).toContain('$21.00 / $15.00')
-    expect(wrapper.find('onboarding-view-stub').isVisible()).toBe(false)
+    expect(wrapper.find('service-setup-panel-stub').isVisible()).toBe(false)
     await wrapper.findAll('[role="tab"]')[0]!.trigger('click')
-    expect(wrapper.find('onboarding-view-stub').isVisible()).toBe(true)
+    expect(wrapper.find('service-setup-panel-stub').isVisible()).toBe(true)
     expect(wrapper.findAll('[role="tab"]')[0]!.attributes('aria-selected')).toBe('true')
     wrapper.unmount()
   })
@@ -163,7 +164,7 @@ describe('dedicated Dynamic 5h pages', () => {
       audit_logs: [],
     })
 
-    const wrapper = mount(AdminDynamic5hPressureView, { global })
+    const wrapper = mount(AdminServiceManagementView, { global })
     await flushPromises()
 
     const text = wrapper.text()
@@ -206,7 +207,7 @@ describe('dedicated Dynamic 5h pages', () => {
       audit_logs: [],
     })
 
-    const wrapper = mount(AdminDynamic5hPressureView, { global })
+    const wrapper = mount(AdminServiceManagementView, { global })
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('idle after reset')
@@ -214,7 +215,7 @@ describe('dedicated Dynamic 5h pages', () => {
     const tabs = wrapper.findAll('[role="tab"]')
     expect(tabs.map(button => button.text())).toEqual(['dynamic5h.title', '用户与账号', 'Discord', '引导与订阅', '重置监测'])
     await tabs[4]!.trigger('click')
-    expect(wrapper.find('onboarding-view-stub').attributes('panel')).toBe('reset')
+    expect(wrapper.find('service-management-panel-stub').attributes('panel')).toBe('reset')
     wrapper.unmount()
   })
 })

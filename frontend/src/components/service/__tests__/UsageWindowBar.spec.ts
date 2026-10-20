@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
-import Dynamic5hUsageBar from '../Dynamic5hUsageBar.vue'
+import UsageWindowBar from '../UsageWindowBar.vue'
 
-describe('Dynamic5hUsageBar', () => {
+describe('UsageWindowBar', () => {
   it('shows borrowed usage above 100% while capping the visual bar', () => {
-    const wrapper = mount(Dynamic5hUsageBar, {
+    const wrapper = mount(UsageWindowBar, {
       props: { label: '5h Usage', value: 180 },
     })
 
@@ -15,7 +15,7 @@ describe('Dynamic5hUsageBar', () => {
   })
 
   it('does not cap the numeric percentage', () => {
-    const wrapper = mount(Dynamic5hUsageBar, {
+    const wrapper = mount(UsageWindowBar, {
       props: { label: '5h Usage', value: 1234.5 },
     })
 
@@ -23,7 +23,7 @@ describe('Dynamic5hUsageBar', () => {
   })
 
   it('uses warning and available colors at the quota thresholds', async () => {
-    const wrapper = mount(Dynamic5hUsageBar, {
+    const wrapper = mount(UsageWindowBar, {
       props: { label: '5h Usage', value: 75 },
     })
 
@@ -34,7 +34,7 @@ describe('Dynamic5hUsageBar', () => {
   })
 
   it('normalizes invalid negative usage to zero', () => {
-    const wrapper = mount(Dynamic5hUsageBar, {
+    const wrapper = mount(UsageWindowBar, {
       props: { label: '5h Usage', value: -10 },
     })
 

@@ -50,11 +50,11 @@ func TestOnboardingTemplateRejectsMissingWrongPlatformAndShadow(t *testing.T) {
 		{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
 		{ID: 42, Platform: PlatformOpenAI, Type: AccountTypeOAuth, ParentAccountID: &parent},
 	} {
-		svc := &OnboardingService{admin: &onboardingTestAdmin{accounts: []Account{account}}}
+		svc := &ServiceCenterService{admin: &onboardingTestAdmin{accounts: []Account{account}}}
 		_, err := svc.accountTemplate(context.Background(), 42)
 		require.ErrorIs(t, err, ErrOnboardingTemplateRequired)
 	}
-	svc := &OnboardingService{admin: &onboardingTestAdmin{}}
+	svc := &ServiceCenterService{admin: &onboardingTestAdmin{}}
 	_, err := svc.accountTemplate(context.Background(), 0)
 	require.ErrorIs(t, err, ErrOnboardingTemplateRequired)
 	_, err = svc.accountTemplate(context.Background(), 42)

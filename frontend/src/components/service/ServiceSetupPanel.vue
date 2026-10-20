@@ -102,16 +102,16 @@ import { computed, onMounted, ref } from 'vue'
 import { buildGatewayUrl } from '@/api/client'
 import {
   completeOpenAIOnboarding,
-  getOnboardingOverview,
+  getServiceCenterOverview,
   startOpenAIOnboarding,
-  setOnboardingAccountPaused,
-  deleteOnboardingAccount,
-  startOnboardingAccountReauthorization,
-  completeOnboardingAccountReauthorization,
-  type OnboardingAccountSummary,
+  setServiceAccountPaused,
+  deleteServiceAccount,
+  startServiceAccountReauthorization,
+  completeServiceAccountReauthorization,
+  type ServiceAccountSummary,
   type OnboardingOAuthStart,
-  type OnboardingUserOverview,
-} from '@/api/user'
+  type ServiceCenterOverview,
+} from '@/api/serviceCenter'
 import { keysAPI } from '@/api/keys'
 import { userGroupsAPI } from '@/api/groups'
 import type { ApiKey, Group } from '@/types'
@@ -124,10 +124,10 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import ServiceAccountDetails from '@/components/common/ServiceAccountDetails.vue'
+import ServiceAccountDetails from '@/components/service/ServiceAccountDetails.vue'
 import { useAppStore } from '@/stores/app'
 
-const overview = ref<OnboardingUserOverview | null>(null)
+const overview = ref<ServiceCenterOverview | null>(null)
 const loading = ref(true)
 const busy = ref(false)
 const oauthStart = ref<OnboardingOAuthStart | null>(null)
@@ -148,15 +148,15 @@ const keyOptions = computed(() => existingKeys.value.map(key => {
   return { value: key.id, label: `${key.name} · ${keyGroupName(key)}${reason ? ` · ${reason}` : ''}`, disabled: !!reason }
 }))
 const app = useAppStore()
-const detail = ref<OnboardingAccountSummary | null>(null)
-const reauthAccount = ref<OnboardingAccountSummary | null>(null)
+const detail = ref<ServiceAccountSummary | null>(null)
+const reauthAccount = ref<ServiceAccountSummary | null>(null)
 const reauthStart = ref<OnboardingOAuthStart | null>(null)
 const reauthCallbackURL = ref('')
 const reauthError = ref('')
 const accountColumns = [{ key: 'name', label: 'GPT 账号' }, { key: 'plan_type', label: '套餐' }, { key: 'status', label: '状态' }, { key: 'actions', label: '操作' }]
-const confirmation = ref<{ account: OnboardingAccountSummary; action: 'pause' | 'resume' | 'delete'; title: string; message: string } | null>(null)
+const confirmation = ref<{ account: ServiceAccountSummary; action: 'pause' | 'resume' | 'delete'; title: string; message: string } | null>(null)
 const reportError = (error: unknown) => app.showError((error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof TypeError ? '回调链接格式无效，请粘贴完整的回调地址' : '操作失败，请稍后重试'))
-function openReauthorization(account: OnboardingAccountSummary) {
+function openReauthorization(account: ServiceAccountSummary) {
   if (busy.value) return
   reauthStart.value = null
   reauthCallbackURL.value = ''
@@ -174,7 +174,7 @@ async function startReauthorization() {
   reauthCallbackURL.value = ''
   const popup = window.open('about:blank', '_blank')
   try {
-    reauthStart.value = await startOnboardingAccountReauthorization(reauthAccount.value.id)
+    reauthStart.value = await startServiceAccountReauthorization(reauthAccount.value.id)
     if (popup) { popup.opener = null; popup.location.href = reauthStart.value.auth_url }
   } catch (error) {
     popup?.close()
@@ -192,7 +192,7 @@ async function completeReauthorization() {
     const code = parsed.searchParams.get('code')
     const state = parsed.searchParams.get('state')
     if (!code || !state) throw new TypeError('invalid callback')
-    await completeOnboardingAccountReauthorization(account.id, { session_id: session.session_id, code, state, onboarding_state: session.onboarding_state })
+    await completeServiceAccountReauthorization(account.id, { session_id: session.session_id, code, state, onboarding_state: session.onboarding_state })
     reauthAccount.value = null
     app.showSuccess(`“${account.name}”${account.email ? `（${account.email}）` : ''}重新授权成功`)
     await load()
@@ -200,7 +200,7 @@ async function completeReauthorization() {
     reauthError.value = (error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof TypeError ? '回调链接格式无效，请粘贴包含 code 和 state 的完整链接' : '重新授权失败，请重新开始授权')
   } finally { busy.value = false }
 }
-function askAccountAction(account: OnboardingAccountSummary, action: 'pause' | 'resume' | 'delete') {
+function askAccountAction(account: ServiceAccountSummary, action: 'pause' | 'resume' | 'delete') {
   const label = { pause: '暂停', resume: '恢复', delete: '删除' }[action]
   confirmation.value = { account, action, title: `确认${label}账号`, message: `确定${label}“${account.name}”（${account.email || serviceAccountPlanLabel(account.plan_type)}）？自动订阅资格会同步更新。${action === 'delete' ? '删除后需要重新授权才能添加。' : '订阅用量和原有效期保持不变。'}` }
 }
@@ -210,8 +210,8 @@ async function confirmAccountAction() {
   confirmation.value = null
   busy.value = true
   try {
-    if (pending.action === 'delete') await deleteOnboardingAccount(pending.account.id)
-    else await setOnboardingAccountPaused(pending.account.id, pending.action === 'pause')
+    if (pending.action === 'delete') await deleteServiceAccount(pending.account.id)
+    else await setServiceAccountPaused(pending.account.id, pending.action === 'pause')
     await load()
     app.showSuccess('账号及订阅已更新')
   } catch (error) { reportError(error) } finally { busy.value = false }
@@ -233,7 +233,7 @@ const importURL = computed(() => {
 async function load() {
   loading.value = true
   try {
-    overview.value = await getOnboardingOverview()
+    overview.value = await getServiceCenterOverview()
     keyGroups.value = (await userGroupsAPI.getAvailable()).filter(group => group.platform === 'openai' && group.status === 'active')
     if (!keyGroups.value.some(group => group.id === keyGroupID.value)) {
       keyGroupID.value = (keyGroups.value.find(group => group.subscription_type === 'subscription') || keyGroups.value[0])?.id

@@ -1,9 +1,10 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
 FRONTEND_CRITICAL_VITEST := \
-	src/views/__tests__/dynamic5hPages.spec.ts \
+	src/views/__tests__/serviceCenterPages.spec.ts \
 	src/views/__tests__/serviceCenterAccounts.spec.ts \
-	src/components/service/__tests__/GmailResetSettings.spec.ts \
+	src/components/service/__tests__/ResetMonitorSettings.spec.ts \
+	src/components/service/__tests__/UsageWindowBar.spec.ts \
 	src/utils/__tests__/serviceCenter.spec.ts \
 	src/utils/__tests__/opsErrorExport.spec.ts \
 	src/views/admin/__tests__/UsageView.spec.ts \

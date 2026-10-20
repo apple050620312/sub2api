@@ -4,8 +4,6 @@ package repository
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,21 +34,15 @@ type poolResetIntegrationTransport struct {
 func (transport *poolResetIntegrationTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	var payload any
 	switch {
-	case request.URL.Host == "oauth2.googleapis.com":
-		payload = map[string]string{"access_token": "integration-access"}
-	case request.URL.Host == "gmail.googleapis.com" && request.URL.Path == "/gmail/v1/users/me/messages":
-		payload = map[string]any{"messages": []map[string]string{{"id": transport.messageID}}}
-	case request.URL.Host == "gmail.googleapis.com" && strings.HasSuffix(request.URL.Path, "/messages/"+transport.messageID):
-		payload = map[string]any{"id": transport.messageID, "internalDate": strconv.FormatInt(transport.received.UnixMilli(), 10), "payload": map[string]any{
-			"mimeType": "text/plain", "headers": []map[string]string{
-				{"name": "From", "value": "notification@willcodexreset.com"},
-				{"name": "Subject", "value": "Codex reset confirmed"},
-				{"name": "Authentication-Results", "value": "mx.google.com; dmarc=pass header.from=willcodexreset.com"},
-			}, "body": map[string]string{"data": base64.RawURLEncoding.EncodeToString([]byte("The limits have been reset."))},
-		}}
-	case request.URL.Host == "model.invalid":
+	case request.URL.Host == "discord.com" && request.Method == http.MethodGet && strings.HasSuffix(request.URL.Path, "/messages"):
+		payload = []map[string]any{{"id": transport.messageID, "channel_id": "1561630415750561863", "timestamp": transport.received.Format(time.RFC3339Nano), "author": map[string]any{"id": "1001", "bot": true}, "embeds": []map[string]string{{"title": "Codex reset confirmed", "description": "The limits have been reset."}}}}
+	case request.URL.Host == "discord.com" && strings.HasSuffix(request.URL.Path, "/channels/1561630415750561863"):
+		payload = map[string]string{"guild_id": "12345"}
+	case request.URL.Host == "127.0.0.1:8080":
 		transport.analyses.Add(1)
-		payload = map[string]any{"choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": `{"kind":"direct_reset","confidence":0.99,"evidence":"The limits have been reset."}`}}}}
+		payload = map[string]any{"status": "completed", "output": []any{map[string]any{"content": []map[string]string{{"type": "output_text", "text": `{"kind":"direct_reset","confidence":0.99,"evidence":"The limits have been reset."}`}}}}}
+	case request.URL.Host == "discord.com" && request.Method == http.MethodPost:
+		return &http.Response{StatusCode: http.StatusForbidden, Header: make(http.Header), Body: io.NopCloser(strings.NewReader("{}")), Request: request}, nil
 	default:
 		return nil, fmt.Errorf("unexpected integration HTTP request: %s", request.URL.Host)
 	}
@@ -66,18 +58,16 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 	client := testEntClient(t)
 	now := time.Now().UTC().Truncate(time.Second)
 	var originalConfig, originalState []byte
-	var originalGmail []byte
+	var originalMonitor []byte
 	var originalSubscriptions []byte
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT COALESCE(jsonb_agg(to_jsonb(s)), '[]'::jsonb) FROM user_subscriptions s`).Scan(&originalSubscriptions))
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT config FROM onboarding_config WHERE id=1`).Scan(&originalConfig))
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT state FROM service_pool_reset_state WHERE id=1`).Scan(&originalState))
-	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT to_jsonb(g) FROM service_pool_reset_gmail g WHERE id=1`).Scan(&originalGmail))
-	transport := &poolResetIntegrationTransport{messageID: uuid.NewString(), received: time.Now().UTC()}
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT to_jsonb(g) FROM service_pool_reset_monitor g WHERE id=1`).Scan(&originalMonitor))
+	transport := &poolResetIntegrationTransport{messageID: strconv.FormatInt(time.Now().UnixNano(), 10), received: time.Now().UTC()}
 	originalTransport := http.DefaultTransport
 	http.DefaultTransport = transport
 	t.Cleanup(func() { http.DefaultTransport = originalTransport })
-	mailbox := uuid.NewString() + "@example.com"
-	messageKey := fmt.Sprintf("%x", sha256.Sum256([]byte(mailbox+":"+transport.messageID)))
 	user := mustCreateUser(t, client, &service.User{Email: uuid.NewString() + "@example.com"})
 	weekly := 100.0
 	group := mustCreateGroup(t, client, &service.Group{Name: uuid.NewString(), Platform: service.PlatformOpenAI, SubscriptionType: service.SubscriptionTypeSubscription, WeeklyLimitUSD: &weekly})
@@ -88,31 +78,33 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM service_pool_reset_events WHERE notification_content='integration-reset'`)
 		_, _ = integrationDB.ExecContext(ctx, `UPDATE onboarding_config SET config=$1::jsonb WHERE id=1`, originalConfig)
 		_, _ = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_state SET state=$1::jsonb,lease_until='-infinity',lease_token='',next_check_at='-infinity' WHERE id=1`, originalState)
-		_, _ = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_gmail g SET config=b.config,credentials_encrypted=b.credentials_encrypted,refresh_token_encrypted=b.refresh_token_encrypted,model_key_encrypted=b.model_key_encrypted,email=b.email,monitor_since=b.monitor_since,version=b.version FROM jsonb_populate_record(NULL::service_pool_reset_gmail,$1::jsonb) b WHERE g.id=1`, originalGmail)
-		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM service_pool_reset_mail WHERE message_key=$1`, messageKey)
+		_, _ = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_monitor g SET config=b.config,owner_user_id=b.owner_user_id,monitor_since=b.monitor_since,version=b.version FROM jsonb_populate_record(NULL::service_pool_reset_monitor,$1::jsonb) b WHERE g.id=1`, originalMonitor)
+		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM service_pool_reset_messages WHERE message_id=$1`, transport.messageID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM user_subscriptions WHERE id=$1`, sub.ID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM groups WHERE id=$1`, group.ID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM users WHERE id=$1`, user.ID)
 	})
-	cfg, err := json.Marshal(service.OnboardingConfig{PoolReset: service.ServicePoolResetConfig{Enabled: true, ChannelID: "123456", Message: "integration-reset"}})
+	cfg, err := json.Marshal(map[string]any{"pool_reset": service.ServicePoolResetConfig{Enabled: true, ChannelID: "123456", Message: "integration-reset"}, "discord": map[string]string{"guild_id": "12345"}, "discord_bot_token_encrypted": "integration-bot"})
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE onboarding_config SET config=$1::jsonb WHERE id=1`, cfg)
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_state SET state='{}',lease_until='-infinity',next_check_at='-infinity' WHERE id=1`)
 	require.NoError(t, err)
-	gmailConfig, err := json.Marshal(service.GmailResetConfig{
-		Senders: []string{"notification@willcodexreset.com"}, PollMinutes: 5, PropagationMinutes: 15,
+	apiKey, err := client.APIKey.Create().SetUserID(user.ID).SetName("reset-monitor").SetKey(uuid.NewString()).SetGroupID(group.ID).Save(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = integrationDB.ExecContext(ctx, `DELETE FROM api_keys WHERE id=$1`, apiKey.ID) })
+	monitorConfig, err := json.Marshal(service.ResetMonitorConfig{
+		ChannelID: "1561630415750561863", BotsOnly: true, RequireEmbeds: true, PollSeconds: 5, PropagationMinutes: 15,
 		AggregationMinutes: 120, CooldownMinutes: 360, MaxAgeHours: 24, BatchSize: 20, MaxModelAttempts: 3, RetentionDays: 30,
-		RequireAuthenticatedSender: true, DirectResetEnabled: true, BankedResetEnabled: true, MinConfidence: 0.95,
-		ModelBaseURL: "https://model.invalid/v1", Model: "test-model", APIFormat: "chat_completions", Prompt: "Classify reset notices.",
-		ModelTimeoutSeconds: 60, MaxOutputTokens: 1024, MaxBodyChars: 24000,
+		DirectResetEnabled: true, BankedResetEnabled: true, MinConfidence: 0.95, ModelAPIKeyID: apiKey.ID,
+		Model: "test-model", APIFormat: "responses", Prompt: "Classify reset notices.", ModelTimeoutSeconds: 60, MaxOutputTokens: 2048, MaxBodyChars: 24000,
 	})
 	require.NoError(t, err)
-	_, err = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_gmail SET config=$1::jsonb,credentials_encrypted=$2,refresh_token_encrypted='integration-refresh',model_key_encrypted='integration-key',email=$3,monitor_since=$4,version=version+1 WHERE id=1`, gmailConfig, `{"web":{"client_id":"test","client_secret":"test-secret"}}`, mailbox, transport.received.Add(-time.Hour))
+	_, err = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_monitor SET config=$1::jsonb,owner_user_id=$2,monitor_since=$3,version=version+1 WHERE id=1`, monitorConfig, user.ID, transport.received.Add(-time.Hour))
 	require.NoError(t, err)
 	subs := service.NewSubscriptionService(NewGroupRepository(client, integrationDB), NewUserSubscriptionRepository(client), nil, client, nil)
 	t.Cleanup(subs.Stop)
-	onboarding := service.NewOnboardingService(client, nil, nil, subs, nil, poolResetIntegrationEncryptor{}, nil)
+	onboarding := service.NewServiceCenterService(client, nil, nil, subs, nil, poolResetIntegrationEncryptor{}, nil)
 	observer := service.NewServicePoolResetService(onboarding)
 	run := func() {
 		t.Helper()
@@ -126,7 +118,7 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, 30.0, unchanged.WeeklyUsageUsd)
 	observer = service.NewServicePoolResetService(onboarding)
-	_, err = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_state SET lease_until='-infinity',next_check_at='-infinity',state=jsonb_set(state,'{gmail,pending,apply_at}',to_jsonb(NOW()-INTERVAL '1 minute')) WHERE id=1`)
+	_, err = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_state SET lease_until='-infinity',next_check_at='-infinity',state=jsonb_set(state,'{monitor,pending,apply_at}',to_jsonb(NOW()-INTERVAL '1 minute')) WHERE id=1`)
 	require.NoError(t, err)
 	var workers sync.WaitGroup
 	errors := make(chan error, 2)
@@ -155,11 +147,11 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 	var events int
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM service_pool_reset_events WHERE notification_content='integration-reset'`).Scan(&events))
 	require.Equal(t, 1, events)
-	require.Equal(t, int32(1), transport.analyses.Load(), "persisted mail must not be analyzed again after restart")
+	require.Equal(t, int32(1), transport.analyses.Load(), "persisted messages must not be analyzed again after restart")
 	var outcome string
-	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT outcome FROM service_pool_reset_mail WHERE message_key=$1`, messageKey).Scan(&outcome))
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT outcome FROM service_pool_reset_messages WHERE message_id=$1`, transport.messageID).Scan(&outcome))
 	require.Equal(t, "applied", outcome)
 	var state string
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT notification_state FROM service_pool_reset_events WHERE notification_content='integration-reset'`).Scan(&state))
-	require.Equal(t, "failed", state, "missing bot credentials must never send a real Discord message")
+	require.Equal(t, "failed", state, "a denied test notification must remain failed without repeating the reset")
 }

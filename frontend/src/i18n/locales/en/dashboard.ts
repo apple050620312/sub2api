@@ -56,35 +56,21 @@ export default {
     viewUsage: 'View Usage',
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
-    addBalanceWithCode: 'Add balance with a code',
-    pressure5h: {
-      normal: 'Pool capacity is available. Unused capacity may be borrowed.',
-      peak: 'Peak demand is active. Dynamic fair-share protection is now in effect.',
-      limited: 'Your rolling 5h usage is above the current fair share.',
-      usage: '5h Usage: {value}%',
-      remaining: 'Remaining: {value}%',
-      recover: 'Recover: {time}'
-    }
+    addBalanceWithCode: 'Add balance with a code'
+  },
+
+  serviceCenter: {
+    title: 'Service center',
+    adminTitle: 'Service management',
+    description: 'Manage account access, setup and rolling usage in one place.',
+    setupTitle: 'Setup guide'
   },
 
   dynamic5h: {
-    workspaceTitle: 'Service center',
-    adminWorkspaceTitle: 'Service management',
     weeklyAllowance: 'Subscription weekly allowance: {value}',
-    workspaceDescription: 'Manage your setup, account access and rolling fair usage in one place.',
-    setupTitle: 'Setup guide',
-    accountWindows: 'Account pool usage windows',
-    poolFiveHour: 'Mean account pool 5h usage',
-    poolSevenDay: 'Mean account pool 7d usage',
-    poolSamples: 'Window samples (5h / 7d)',
-    ready: 'Ready',
-    searchAccounts: 'Search account name or platform',
-    windowUnavailable: 'Window data unavailable',
-    noAccounts: 'No matching accounts',
     updatedAt: 'Last updated',
     stale: 'Data is stale; enforcement is paused',
     title: '5h Fair Usage',
-    description: 'Track actual spending over five hours against 15% of active subscription weekly USD allowances.',
     unavailable: 'No active subscription has a weekly USD allowance. Extra five-hour limits are off; subscription and account limits still apply.',
     disabled: 'Five-hour peak protection is disabled.',
     normal: 'Normal',

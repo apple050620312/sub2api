@@ -78,16 +78,7 @@ export default {
       groupPricingDesc: '设置批量折扣和冻结比例',
       systemSettings: '系统设置',
       configureSystem: '配置系统设置',
-      failedToLoad: '加载仪表盘数据失败',
-      pressure5h: {
-        title: '全域 5h 压力',
-        accounts: '纳入账号',
-        remaining: '剩余容量',
-        activeUsers: '近 5h 活跃用户',
-        peak: '高峰保护',
-        enforcement: '公平份额限制',
-        states: { normal: '正常', peak: '高峰保护' }
-      }
+      failedToLoad: '加载仪表盘数据失败'
     },
 
     pressure5hPage: {

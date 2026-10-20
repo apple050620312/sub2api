@@ -2281,9 +2281,6 @@ func classifyOpsIsBusinessLimited(errType, phase, code string, status int, messa
 	if isOpsLocalBusinessLimitError(code, strings.ToLower(message)) {
 		return true
 	}
-	if strings.TrimSpace(code) == opsCodeDynamic5hLimit || strings.Contains(strings.ToLower(message), "rolling five-hour usage limit") {
-		return true
-	}
 	if phase == "billing" || phase == "concurrency" {
 		// SLA/错误率排除“用户级业务限制”
 		return true

@@ -1,19 +1,19 @@
 import { apiClient } from '../client'
-import type { OnboardingConfig, OnboardingAdminOverview, OnboardingDiscordMember } from './onboardingTypes'
-export type { OnboardingConfig, OnboardingAdminOverview } from './onboardingTypes'
+import type { ServiceCenterConfig, ServiceManagementOverview, OnboardingDiscordMember } from './serviceCenterTypes'
+export type { ServiceCenterConfig, ServiceManagementOverview } from './serviceCenterTypes'
 
-export async function getOverview(): Promise<OnboardingAdminOverview> {
-  const { data } = await apiClient.get<OnboardingAdminOverview>('/admin/onboarding')
+export async function getOverview(): Promise<ServiceManagementOverview> {
+  const { data } = await apiClient.get<ServiceManagementOverview>('/admin/onboarding')
   return data
 }
 
-export async function getConfig(): Promise<OnboardingConfig> {
-  const { data } = await apiClient.get<OnboardingConfig>('/admin/onboarding/config')
+export async function getConfig(): Promise<ServiceCenterConfig> {
+  const { data } = await apiClient.get<ServiceCenterConfig>('/admin/onboarding/config')
   return data
 }
 
-export async function updateConfig(payload: Record<string, unknown>): Promise<OnboardingConfig> {
-  const { data } = await apiClient.put<OnboardingConfig>('/admin/onboarding/config', payload)
+export async function updateConfig(payload: Record<string, unknown>): Promise<ServiceCenterConfig> {
+  const { data } = await apiClient.put<ServiceCenterConfig>('/admin/onboarding/config', payload)
   return data
 }
 
@@ -41,6 +41,6 @@ export async function getDiscordChannels(): Promise<Array<{ id: string; name: st
   return data
 }
 
-export const onboardingAPI = { getOverview, getConfig, updateConfig, bindAccount, unbindAccount, getDiscordMembers, bindDiscordMember, getDiscordChannels }
-export default onboardingAPI
+export const serviceCenterAPI = { getOverview, getConfig, updateConfig, bindAccount, unbindAccount, getDiscordMembers, bindDiscordMember, getDiscordChannels }
+export default serviceCenterAPI
 

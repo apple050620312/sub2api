@@ -7,7 +7,7 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
-func (s *OnboardingService) checkOpenAIAccountNotAdded(ctx context.Context, token *OpenAITokenInfo) error {
+func (s *ServiceCenterService) checkOpenAIAccountNotAdded(ctx context.Context, token *OpenAITokenInfo) error {
 	accountID := strings.TrimSpace(token.ChatGPTAccountID)
 	userID := strings.TrimSpace(token.ChatGPTUserID)
 	email := strings.ToLower(strings.TrimSpace(token.Email))
@@ -38,7 +38,7 @@ func (s *OnboardingService) checkOpenAIAccountNotAdded(ctx context.Context, toke
 	return rows.Err()
 }
 
-func (s *OnboardingService) ownedAccount(ctx context.Context, userID, accountID int64) (*Account, error) {
+func (s *ServiceCenterService) ownedAccount(ctx context.Context, userID, accountID int64) (*Account, error) {
 	account, err := s.admin.GetAccount(ctx, accountID)
 	if err != nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || !onboardingAccountBelongsToUser(account, userID) {
 		return nil, ErrOnboardingAccountMissing
@@ -46,7 +46,7 @@ func (s *OnboardingService) ownedAccount(ctx context.Context, userID, accountID 
 	return account, nil
 }
 
-func (s *OnboardingService) SetOwnedAccountPaused(ctx context.Context, userID, accountID int64, paused bool) error {
+func (s *ServiceCenterService) SetOwnedAccountPaused(ctx context.Context, userID, accountID int64, paused bool) error {
 	return s.mutateUser(ctx, userID, accountID, func(ctx context.Context) error {
 		account, err := s.ownedAccount(ctx, userID, accountID)
 		if err != nil {
@@ -73,7 +73,7 @@ func (s *OnboardingService) SetOwnedAccountPaused(ctx context.Context, userID, a
 	})
 }
 
-func (s *OnboardingService) DeleteOwnedAccount(ctx context.Context, userID, accountID int64) error {
+func (s *ServiceCenterService) DeleteOwnedAccount(ctx context.Context, userID, accountID int64) error {
 	return s.mutateUser(ctx, userID, accountID, func(ctx context.Context) error {
 		if _, err := s.ownedAccount(ctx, userID, accountID); err != nil {
 			return err

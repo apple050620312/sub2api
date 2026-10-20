@@ -26,7 +26,7 @@ type onboardingDiscordGuildMember struct {
 	} `json:"user"`
 }
 
-func (s *OnboardingService) discordBotRequest(ctx context.Context, stored *onboardingStoredConfig, method, path string, target any) error {
+func (s *ServiceCenterService) discordBotRequest(ctx context.Context, stored *serviceCenterStoredConfig, method, path string, target any) error {
 	if stored.Discord.BotToken == "" || stored.Discord.GuildID == "" {
 		return ErrDiscordNotConfigured
 	}
@@ -42,7 +42,7 @@ func (s *OnboardingService) discordBotRequest(ctx context.Context, stored *onboa
 	return decodeJSONResponse(resp, target)
 }
 
-func (s *OnboardingService) ListDiscordMembers(ctx context.Context, query string) ([]OnboardingDiscordMember, error) {
+func (s *ServiceCenterService) ListDiscordMembers(ctx context.Context, query string) ([]OnboardingDiscordMember, error) {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -89,7 +89,7 @@ func (s *OnboardingService) ListDiscordMembers(ctx context.Context, query string
 	return result, nil
 }
 
-func (s *OnboardingService) BindDiscordMember(ctx context.Context, userID int64, memberID string) (*OnboardingDiscordBinding, error) {
+func (s *ServiceCenterService) BindDiscordMember(ctx context.Context, userID int64, memberID string) (*OnboardingDiscordBinding, error) {
 	if userID <= 0 || memberID == "" || strings.Trim(memberID, "0123456789") != "" {
 		return nil, infraerrors.BadRequest("DISCORD_MEMBER_INVALID", "请选择有效的 Discord 成员")
 	}

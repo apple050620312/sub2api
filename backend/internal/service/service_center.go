@@ -58,8 +58,8 @@ type OnboardingSubscriptionRule struct {
 	ValidityDays int   `json:"validity_days"`
 }
 
-// OnboardingConfig contains all public onboarding configuration.
-type OnboardingConfig struct {
+// ServiceCenterConfig contains all public onboarding configuration.
+type ServiceCenterConfig struct {
 	Enabled                     bool                                  `json:"enabled"`
 	AccountTemplateID           int64                                 `json:"account_template_id"`
 	PoolReset                   ServicePoolResetConfig                `json:"pool_reset"`
@@ -70,8 +70,8 @@ type OnboardingConfig struct {
 	CCSwitchDownloadURL         string                                `json:"ccswitch_download_url"`
 }
 
-type onboardingStoredConfig struct {
-	OnboardingConfig
+type serviceCenterStoredConfig struct {
+	ServiceCenterConfig
 	DiscordClientSecretEncrypted string `json:"discord_client_secret_encrypted,omitempty"`
 	DiscordBotTokenEncrypted     string `json:"discord_bot_token_encrypted,omitempty"`
 }
@@ -88,7 +88,7 @@ type OnboardingDiscordBinding struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
-type OnboardingAccountSummary struct {
+type ServiceAccountSummary struct {
 	ID            int64                      `json:"id"`
 	Name          string                     `json:"name"`
 	Email         string                     `json:"email"`
@@ -108,39 +108,39 @@ type OnboardingAccountSummary struct {
 	Usage         Dynamic5hAccountDiagnostic `json:"usage"`
 }
 
-type OnboardingSubscriptionSummary struct {
+type ServiceSubscriptionSummary struct {
 	GroupName string    `json:"group_name"`
 	Status    string    `json:"status"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-type OnboardingUserOverview struct {
-	AccountSetupMessage string                          `json:"account_setup_message,omitempty"`
-	Discord             *OnboardingDiscordBinding       `json:"discord,omitempty"`
-	DiscordRequired     bool                            `json:"discord_required"`
-	Accounts            []OnboardingAccountSummary      `json:"accounts"`
-	AccountUnits        int                             `json:"account_units"`
-	ReadyForAccount     bool                            `json:"ready_for_account"`
-	ReadyForKey         bool                            `json:"ready_for_key"`
-	Config              OnboardingConfig                `json:"config"`
-	Subscriptions       []OnboardingSubscriptionSummary `json:"subscriptions"`
+type ServiceCenterOverview struct {
+	AccountSetupMessage string                       `json:"account_setup_message,omitempty"`
+	Discord             *OnboardingDiscordBinding    `json:"discord,omitempty"`
+	DiscordRequired     bool                         `json:"discord_required"`
+	Accounts            []ServiceAccountSummary      `json:"accounts"`
+	AccountUnits        int                          `json:"account_units"`
+	ReadyForAccount     bool                         `json:"ready_for_account"`
+	ReadyForKey         bool                         `json:"ready_for_key"`
+	Config              ServiceCenterConfig          `json:"config"`
+	Subscriptions       []ServiceSubscriptionSummary `json:"subscriptions"`
 }
 
-type OnboardingAdminUser struct {
-	UserID       int64                      `json:"user_id"`
-	Email        string                     `json:"email"`
-	Username     string                     `json:"username"`
-	Discord      *OnboardingDiscordBinding  `json:"discord,omitempty"`
-	Accounts     []OnboardingAccountSummary `json:"accounts"`
-	AccountUnits int                        `json:"account_units"`
+type ServiceManagementUser struct {
+	UserID       int64                     `json:"user_id"`
+	Email        string                    `json:"email"`
+	Username     string                    `json:"username"`
+	Discord      *OnboardingDiscordBinding `json:"discord,omitempty"`
+	Accounts     []ServiceAccountSummary   `json:"accounts"`
+	AccountUnits int                       `json:"account_units"`
 }
 
-type OnboardingAdminOverview struct {
-	Config             OnboardingConfig           `json:"config"`
-	Users              []OnboardingAdminUser      `json:"users"`
-	UnassignedAccounts []OnboardingAccountSummary `json:"unassigned_accounts"`
-	TemplateAccounts   []OnboardingAccountSummary `json:"template_accounts"`
-	PoolResetStatus    *ServicePoolResetStatus    `json:"pool_reset_status,omitempty"`
+type ServiceManagementOverview struct {
+	Config             ServiceCenterConfig     `json:"config"`
+	Users              []ServiceManagementUser `json:"users"`
+	UnassignedAccounts []ServiceAccountSummary `json:"unassigned_accounts"`
+	TemplateAccounts   []ServiceAccountSummary `json:"template_accounts"`
+	PoolResetStatus    *ServicePoolResetStatus `json:"pool_reset_status,omitempty"`
 }
 
 type OnboardingOAuthStart struct {
@@ -150,7 +150,7 @@ type OnboardingOAuthStart struct {
 	RedirectURI     string `json:"redirect_uri"`
 }
 
-type OnboardingService struct {
+type ServiceCenterService struct {
 	db                    *dbent.Client
 	admin                 AdminService
 	oauth                 *OpenAIOAuthService
@@ -161,18 +161,18 @@ type OnboardingService struct {
 	tokenCacheInvalidator TokenCacheInvalidator
 }
 
-func NewOnboardingService(db *dbent.Client, admin AdminService, oauth *OpenAIOAuthService, subscriptions *SubscriptionService, cfg *config.Config, encryptor SecretEncryptor, tokenCacheInvalidator TokenCacheInvalidator) *OnboardingService {
-	return &OnboardingService{db: db, admin: admin, oauth: oauth, subscriptions: subscriptions, cfg: cfg, encryptor: encryptor, httpClient: &http.Client{Timeout: 12 * time.Second}, tokenCacheInvalidator: tokenCacheInvalidator}
+func NewServiceCenterService(db *dbent.Client, admin AdminService, oauth *OpenAIOAuthService, subscriptions *SubscriptionService, cfg *config.Config, encryptor SecretEncryptor, tokenCacheInvalidator TokenCacheInvalidator) *ServiceCenterService {
+	return &ServiceCenterService{db: db, admin: admin, oauth: oauth, subscriptions: subscriptions, cfg: cfg, encryptor: encryptor, httpClient: &http.Client{Timeout: 12 * time.Second}, tokenCacheInvalidator: tokenCacheInvalidator}
 }
 
-func defaultOnboardingConfig() OnboardingConfig {
-	return OnboardingConfig{
+func defaultServiceCenterConfig() ServiceCenterConfig {
+	return ServiceCenterConfig{
 		Enabled:           true,
 		SubscriptionRules: map[string]OnboardingSubscriptionRule{},
 	}
 }
 
-func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredConfig, error) {
+func (s *ServiceCenterService) loadConfig(ctx context.Context) (*serviceCenterStoredConfig, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("onboarding database is unavailable")
 	}
@@ -191,13 +191,13 @@ func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredCo
 	if err := rows.Scan(&raw); err != nil {
 		return nil, err
 	}
-	stored := onboardingStoredConfig{OnboardingConfig: defaultOnboardingConfig()}
+	stored := serviceCenterStoredConfig{ServiceCenterConfig: defaultServiceCenterConfig()}
 	if len(raw) != 0 && string(raw) != "null" {
 		if err := json.Unmarshal(raw, &stored); err != nil {
 			return nil, fmt.Errorf("decode onboarding config: %w", err)
 		}
 	}
-	if err := normalizeOnboardingSubscriptionRules(raw, &stored.OnboardingConfig); err != nil {
+	if err := normalizeOnboardingSubscriptionRules(raw, &stored.ServiceCenterConfig); err != nil {
 		return nil, err
 	}
 	if stored.DiscordClientSecretEncrypted != "" && s.encryptor != nil {
@@ -217,11 +217,11 @@ func (s *OnboardingService) loadConfig(ctx context.Context) (*onboardingStoredCo
 	return &stored, nil
 }
 
-func publicOnboardingConfig(stored *onboardingStoredConfig) OnboardingConfig {
+func publicServiceCenterConfig(stored *serviceCenterStoredConfig) ServiceCenterConfig {
 	if stored == nil {
-		return defaultOnboardingConfig()
+		return defaultServiceCenterConfig()
 	}
-	public := stored.OnboardingConfig
+	public := stored.ServiceCenterConfig
 	public.Discord.ClientSecret = ""
 	public.Discord.BotToken = ""
 	public.Discord.ClientSecretSet = stored.Discord.ClientSecret != ""
@@ -229,46 +229,46 @@ func publicOnboardingConfig(stored *onboardingStoredConfig) OnboardingConfig {
 	return public
 }
 
-func (s *OnboardingService) GetConfig(ctx context.Context) (OnboardingConfig, error) {
+func (s *ServiceCenterService) GetConfig(ctx context.Context) (ServiceCenterConfig, error) {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
-	return publicOnboardingConfig(stored), nil
+	return publicServiceCenterConfig(stored), nil
 }
 
-func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingConfig) (OnboardingConfig, error) {
+func (s *ServiceCenterService) UpdateConfig(ctx context.Context, next ServiceCenterConfig) (ServiceCenterConfig, error) {
 	current, err := s.loadConfig(ctx)
 	if err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
 	if next.AccountTemplateID < 0 {
-		return OnboardingConfig{}, ErrOnboardingTemplateRequired
+		return ServiceCenterConfig{}, ErrOnboardingTemplateRequired
 	}
 	if next.AccountTemplateID > 0 {
 		if _, err := s.accountTemplate(ctx, next.AccountTemplateID); err != nil {
-			return OnboardingConfig{}, err
+			return ServiceCenterConfig{}, err
 		}
 	}
 	if err := validateServicePoolResetConfig(next.PoolReset, next.Discord, current.Discord); err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
 	if next.SubscriptionRules == nil {
 		next.SubscriptionRules = current.SubscriptionRules
 	}
 	for tier, rule := range next.SubscriptionRules {
 		if tier != "1" && tier != "2" && tier != "3" && tier != "4" && tier != "5" {
-			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "请选择 1 到 5 个 Plus 等值对应的订阅档位")
+			return ServiceCenterConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "请选择 1 到 5 个 Plus 等值对应的订阅档位")
 		}
 		if rule.GroupID == 0 {
 			continue
 		}
 		if rule.GroupID < 0 || rule.ValidityDays < 1 || rule.ValidityDays > MaxValidityDays {
-			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "订阅规则必须选择有效分组和有效期")
+			return ServiceCenterConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "订阅规则必须选择有效分组和有效期")
 		}
 		group, err := s.admin.GetGroup(ctx, rule.GroupID)
 		if err != nil || group == nil || group.Platform != PlatformOpenAI || group.SubscriptionType != SubscriptionTypeSubscription || group.Status != StatusActive {
-			return OnboardingConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "请选择有效的 OpenAI 订阅分组")
+			return ServiceCenterConfig{}, infraerrors.BadRequest("ONBOARDING_CONFIG_INVALID", "请选择有效的 OpenAI 订阅分组")
 		}
 	}
 	if strings.TrimSpace(next.Discord.ClientSecret) == "" {
@@ -278,51 +278,51 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 		next.Discord.BotToken = current.Discord.BotToken
 	}
 	if err := s.validateResetChannel(ctx, next.PoolReset, next.Discord); err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
-	stored := onboardingStoredConfig{OnboardingConfig: next}
+	stored := serviceCenterStoredConfig{ServiceCenterConfig: next}
 	if next.Discord.ClientSecret != "" {
 		if s.encryptor == nil {
-			return OnboardingConfig{}, fmt.Errorf("secret encryption is unavailable")
+			return ServiceCenterConfig{}, fmt.Errorf("secret encryption is unavailable")
 		}
 		stored.DiscordClientSecretEncrypted, err = s.encryptor.Encrypt(next.Discord.ClientSecret)
 		if err != nil {
-			return OnboardingConfig{}, err
+			return ServiceCenterConfig{}, err
 		}
 	}
 	if next.Discord.BotToken != "" {
 		if s.encryptor == nil {
-			return OnboardingConfig{}, fmt.Errorf("secret encryption is unavailable")
+			return ServiceCenterConfig{}, fmt.Errorf("secret encryption is unavailable")
 		}
 		stored.DiscordBotTokenEncrypted, err = s.encryptor.Encrypt(next.Discord.BotToken)
 		if err != nil {
-			return OnboardingConfig{}, err
+			return ServiceCenterConfig{}, err
 		}
 	}
 	payload, err := json.Marshal(stored)
 	if err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
 	tx, err := s.db.Tx(ctx)
 	if err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	ctx = dbent.NewTxContext(ctx, tx)
 	if next.PoolReset.Enabled != current.PoolReset.Enabled {
-		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_gmail SET monitor_since=NOW(),version=version+1 WHERE id=1`); err != nil {
-			return OnboardingConfig{}, err
+		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_monitor SET monitor_since=NOW(),version=version+1 WHERE id=1`); err != nil {
+			return ServiceCenterConfig{}, err
 		}
-		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_state SET next_check_at=NOW(),state=state #- '{gmail,pending}' #- '{status,pending_until}' WHERE id=1`); err != nil {
-			return OnboardingConfig{}, err
+		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_state SET next_check_at=NOW(),state=state #- '{monitor,pending}' #- '{status,pending_until}' WHERE id=1`); err != nil {
+			return ServiceCenterConfig{}, err
 		}
 	}
 	if _, err := tx.Client().ExecContext(ctx, `UPDATE onboarding_config SET config = $1::jsonb, updated_at = NOW() WHERE id = 1`, payload); err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
 	accounts, err := s.listOpenAIAccounts(ctx)
 	if err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
 	owners := make(map[int64]struct{})
 	for _, account := range accounts {
@@ -332,20 +332,20 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	}
 	rows, err := s.client(ctx).QueryContext(ctx, `SELECT DISTINCT user_id FROM user_subscriptions WHERE deleted_at IS NULL AND notes LIKE 'onboarding-managed:%'`)
 	if err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
 	for rows.Next() {
 		var owner int64
 		if err := rows.Scan(&owner); err != nil {
 			_ = rows.Close()
-			return OnboardingConfig{}, err
+			return ServiceCenterConfig{}, err
 		}
 		owners[owner] = struct{}{}
 	}
 	rowsErr := rows.Err()
 	_ = rows.Close()
 	if rowsErr != nil {
-		return OnboardingConfig{}, rowsErr
+		return ServiceCenterConfig{}, rowsErr
 	}
 	ownerIDs := make([]int64, 0, len(owners))
 	for owner := range owners {
@@ -354,19 +354,19 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	sort.Slice(ownerIDs, func(first, second int) bool { return ownerIDs[first] < ownerIDs[second] })
 	for _, owner := range ownerIDs {
 		if _, err := tx.Client().ExecContext(ctx, `SELECT id FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE`, owner); err != nil {
-			return OnboardingConfig{}, err
+			return ServiceCenterConfig{}, err
 		}
 		if err := s.reconcileSubscriptions(ctx, owner); err != nil {
-			return OnboardingConfig{}, err
+			return ServiceCenterConfig{}, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return OnboardingConfig{}, err
+		return ServiceCenterConfig{}, err
 	}
-	return publicOnboardingConfig(&stored), nil
+	return publicServiceCenterConfig(&stored), nil
 }
 
-func (s *OnboardingService) getBinding(ctx context.Context, userID int64) (*OnboardingDiscordBinding, error) {
+func (s *ServiceCenterService) getBinding(ctx context.Context, userID int64) (*OnboardingDiscordBinding, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT user_id, discord_user_id, discord_username, guild_id, role_id, status, last_checked_at, created_at, updated_at FROM onboarding_discord_bindings WHERE user_id = $1`, userID)
 	if err != nil {
 		return nil, err
@@ -382,7 +382,7 @@ func (s *OnboardingService) getBinding(ctx context.Context, userID int64) (*Onbo
 	return &binding, nil
 }
 
-func (s *OnboardingService) listBindings(ctx context.Context) ([]OnboardingDiscordBinding, error) {
+func (s *ServiceCenterService) listBindings(ctx context.Context) ([]OnboardingDiscordBinding, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT user_id, discord_user_id, discord_username, guild_id, role_id, status, last_checked_at, created_at, updated_at FROM onboarding_discord_bindings ORDER BY user_id`)
 	if err != nil {
 		return nil, err
@@ -399,7 +399,7 @@ func (s *OnboardingService) listBindings(ctx context.Context) ([]OnboardingDisco
 	return bindings, rows.Err()
 }
 
-func (s *OnboardingService) requireEnabled(ctx context.Context) (*onboardingStoredConfig, error) {
+func (s *ServiceCenterService) requireEnabled(ctx context.Context) (*serviceCenterStoredConfig, error) {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -410,7 +410,7 @@ func (s *OnboardingService) requireEnabled(ctx context.Context) (*onboardingStor
 	return stored, nil
 }
 
-func (s *OnboardingService) requireDiscord(ctx context.Context, userID int64) (*onboardingStoredConfig, error) {
+func (s *ServiceCenterService) requireDiscord(ctx context.Context, userID int64) (*serviceCenterStoredConfig, error) {
 	stored, err := s.requireEnabled(ctx)
 	if err != nil {
 		return nil, err
@@ -457,7 +457,7 @@ func partitionOnboardingAccounts(accounts []*Account, userID int64) (owned, publ
 	return owned, public
 }
 
-func (s *OnboardingService) listUserAccounts(ctx context.Context, userID int64) ([]Account, int, error) {
+func (s *ServiceCenterService) listUserAccounts(ctx context.Context, userID int64) ([]Account, int, error) {
 	accounts, err := s.listOpenAIAccounts(ctx)
 	if err != nil {
 		return nil, 0, err
@@ -476,14 +476,14 @@ func (s *OnboardingService) listUserAccounts(ctx context.Context, userID int64) 
 	return owned, units, nil
 }
 
-func (s *OnboardingService) client(ctx context.Context) *dbent.Client {
+func (s *ServiceCenterService) client(ctx context.Context) *dbent.Client {
 	if tx := dbent.TxFromContext(ctx); tx != nil {
 		return tx.Client()
 	}
 	return s.db
 }
 
-func (s *OnboardingService) listOpenAIAccounts(ctx context.Context) ([]Account, error) {
+func (s *ServiceCenterService) listOpenAIAccounts(ctx context.Context) ([]Account, error) {
 	accounts := make([]Account, 0)
 	for page := 1; ; page++ {
 		batch, total, err := s.admin.ListAccounts(ctx, page, 200, PlatformOpenAI, AccountTypeOAuth, "", "", 0, "", "id", "asc")
@@ -503,9 +503,9 @@ func onboardingAccountContributes(account Account, now time.Time) bool {
 		(!account.AutoPauseOnExpired || account.ExpiresAt == nil || account.ExpiresAt.After(now))
 }
 
-func onboardingAccountSummary(account Account) OnboardingAccountSummary {
+func onboardingAccountSummary(account Account) ServiceAccountSummary {
 	paused, _ := account.Extra[onboardingPausedExtraKey].(bool)
-	result := OnboardingAccountSummary{
+	result := ServiceAccountSummary{
 		ID: account.ID, Name: account.Name, Email: account.GetCredential("email"),
 		PlanType: normalizeOnboardingPlan(account.GetCredential("plan_type")), Status: account.Status,
 		Schedulable: account.Schedulable, Paused: paused, Concurrency: account.Concurrency,
@@ -530,7 +530,7 @@ func onboardingAccountSummary(account Account) OnboardingAccountSummary {
 	return result
 }
 
-func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (*OnboardingUserOverview, error) {
+func (s *ServiceCenterService) GetUserOverview(ctx context.Context, userID int64) (*ServiceCenterOverview, error) {
 	stored, err := s.requireEnabled(ctx)
 	if err != nil {
 		return nil, err
@@ -543,11 +543,11 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 	if err != nil {
 		return nil, err
 	}
-	summaries := make([]OnboardingAccountSummary, 0, len(accounts))
+	summaries := make([]ServiceAccountSummary, 0, len(accounts))
 	for _, account := range accounts {
 		summaries = append(summaries, onboardingAccountSummary(account))
 	}
-	subscriptions := make([]OnboardingSubscriptionSummary, 0)
+	subscriptions := make([]ServiceSubscriptionSummary, 0)
 	readyForKey := false
 	if s.subscriptions != nil {
 		subs, err := s.subscriptions.ListUserSubscriptions(ctx, userID)
@@ -558,11 +558,11 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 			if sub.Group == nil || sub.Group.Platform != PlatformOpenAI {
 				continue
 			}
-			subscriptions = append(subscriptions, OnboardingSubscriptionSummary{GroupName: sub.Group.Name, Status: sub.Status, ExpiresAt: sub.ExpiresAt})
+			subscriptions = append(subscriptions, ServiceSubscriptionSummary{GroupName: sub.Group.Name, Status: sub.Status, ExpiresAt: sub.ExpiresAt})
 			readyForKey = readyForKey || sub.IsActive()
 		}
 	}
-	userConfig := defaultOnboardingConfig()
+	userConfig := defaultServiceCenterConfig()
 	userConfig.Enabled, userConfig.CCSwitchDownloadURL = stored.Enabled, stored.CCSwitchDownloadURL
 	templateReady := false
 	if stored.AccountTemplateID > 0 {
@@ -573,7 +573,7 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 	if !templateReady {
 		setupMessage = "管理员尚未指定 GPT 模板账号，请联系管理员完成服务配置。"
 	}
-	return &OnboardingUserOverview{
+	return &ServiceCenterOverview{
 		AccountSetupMessage: setupMessage,
 		Discord:             binding, DiscordRequired: true, Accounts: summaries, AccountUnits: units,
 		ReadyForAccount: binding != nil && binding.Status == "active" && templateReady,
@@ -583,7 +583,7 @@ func (s *OnboardingService) GetUserOverview(ctx context.Context, userID int64) (
 	}, nil
 }
 
-func (s *OnboardingService) signState(userID int64, kind string) (string, error) {
+func (s *ServiceCenterService) signState(userID int64, kind string) (string, error) {
 	if s.cfg == nil || strings.TrimSpace(s.cfg.JWT.Secret) == "" {
 		return "", fmt.Errorf("JWT secret is not configured")
 	}
@@ -593,7 +593,7 @@ func (s *OnboardingService) signState(userID int64, kind string) (string, error)
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
 }
 
-func (s *OnboardingService) verifyState(state, kind string, userID int64) error {
+func (s *ServiceCenterService) verifyState(state, kind string, userID int64) error {
 	parts := strings.Split(state, ".")
 	if len(parts) != 2 || s.cfg == nil || strings.TrimSpace(s.cfg.JWT.Secret) == "" {
 		return ErrOnboardingStateInvalid
@@ -623,7 +623,7 @@ func (s *OnboardingService) verifyState(state, kind string, userID int64) error 
 	return nil
 }
 
-func (s *OnboardingService) StartDiscord(ctx context.Context, userID int64, redirectURI string) (string, error) {
+func (s *ServiceCenterService) StartDiscord(ctx context.Context, userID int64, redirectURI string) (string, error) {
 	stored, err := s.requireEnabled(ctx)
 	if err != nil {
 		return "", err
@@ -660,7 +660,7 @@ func decodeJSONResponse(resp *http.Response, target any) error {
 	return json.Unmarshal(body, target)
 }
 
-func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, code, state, redirectURI string) (*OnboardingDiscordBinding, error) {
+func (s *ServiceCenterService) CompleteDiscord(ctx context.Context, userID int64, code, state, redirectURI string) (*OnboardingDiscordBinding, error) {
 	stored, err := s.requireEnabled(ctx)
 	if err != nil {
 		return nil, err
@@ -734,7 +734,7 @@ func (s *OnboardingService) CompleteDiscord(ctx context.Context, userID int64, c
 	return s.saveDiscordBinding(ctx, userID, discordUser.ID, discordUser.Username, stored)
 }
 
-func (s *OnboardingService) saveDiscordBinding(ctx context.Context, userID int64, discordID, username string, stored *onboardingStoredConfig) (*OnboardingDiscordBinding, error) {
+func (s *ServiceCenterService) saveDiscordBinding(ctx context.Context, userID int64, discordID, username string, stored *serviceCenterStoredConfig) (*OnboardingDiscordBinding, error) {
 	_, err := s.db.ExecContext(ctx, `INSERT INTO onboarding_discord_bindings (user_id, discord_user_id, discord_username, guild_id, role_id, status, last_checked_at, updated_at) VALUES ($1,$2,$3,$4,$5,'active',NOW(),NOW()) ON CONFLICT (user_id) DO UPDATE SET discord_user_id=EXCLUDED.discord_user_id, discord_username=EXCLUDED.discord_username, guild_id=EXCLUDED.guild_id, role_id=EXCLUDED.role_id, status='active', last_checked_at=NOW(), updated_at=NOW()`, userID, discordID, username, stored.Discord.GuildID, stored.Discord.RoleID)
 	if err != nil {
 		var state interface{ SQLState() string }
@@ -746,7 +746,7 @@ func (s *OnboardingService) saveDiscordBinding(ctx context.Context, userID int64
 	return s.getBinding(ctx, userID)
 }
 
-func (s *OnboardingService) StartOpenAI(ctx context.Context, userID int64, _ string) (*OnboardingOAuthStart, error) {
+func (s *ServiceCenterService) StartOpenAI(ctx context.Context, userID int64, _ string) (*OnboardingOAuthStart, error) {
 	stored, err := s.requireDiscord(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -769,7 +769,7 @@ func (s *OnboardingService) StartOpenAI(ctx context.Context, userID int64, _ str
 	return &OnboardingOAuthStart{AuthURL: result.AuthURL, SessionID: result.SessionID, OnboardingState: state, RedirectURI: redirectURI}, nil
 }
 
-func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, sessionID, code, oauthState, onboardingState string, _ string) (*Account, error) {
+func (s *ServiceCenterService) CompleteOpenAI(ctx context.Context, userID int64, sessionID, code, oauthState, onboardingState string, _ string) (*Account, error) {
 	stored, err := s.requireDiscord(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -812,7 +812,7 @@ func (s *OnboardingService) CompleteOpenAI(ctx context.Context, userID int64, se
 	return s.admin.GetAccount(ctx, account.ID)
 }
 
-func (s *OnboardingService) reconcileSubscriptions(ctx context.Context, userID int64) error {
+func (s *ServiceCenterService) reconcileSubscriptions(ctx context.Context, userID int64) error {
 	if dbent.TxFromContext(ctx) == nil {
 		return s.mutateUser(ctx, userID, 0, nil)
 	}
@@ -870,7 +870,7 @@ func (s *OnboardingService) reconcileSubscriptions(ctx context.Context, userID i
 	return nil
 }
 
-func (s *OnboardingService) syncOnboardingSubscriptions(ctx context.Context, userID int64, selected map[int64]OnboardingSubscriptionRule, subs []UserSubscription, now time.Time) (map[int64]struct{}, error) {
+func (s *ServiceCenterService) syncOnboardingSubscriptions(ctx context.Context, userID int64, selected map[int64]OnboardingSubscriptionRule, subs []UserSubscription, now time.Time) (map[int64]struct{}, error) {
 	activeGroups := make(map[int64]struct{})
 	existing := make(map[int64]UserSubscription, len(subs))
 	for _, sub := range subs {
@@ -938,7 +938,7 @@ func (s *OnboardingService) syncOnboardingSubscriptions(ctx context.Context, use
 	return activeGroups, nil
 }
 
-func (s *OnboardingService) mutateUser(ctx context.Context, userID, accountID int64, mutate func(context.Context) error) error {
+func (s *ServiceCenterService) mutateUser(ctx context.Context, userID, accountID int64, mutate func(context.Context) error) error {
 	tx, err := s.db.Tx(ctx)
 	if err != nil {
 		return err
@@ -967,7 +967,7 @@ func (s *OnboardingService) mutateUser(ctx context.Context, userID, accountID in
 	return tx.Commit()
 }
 
-func (s *OnboardingService) BindExistingAccount(ctx context.Context, userID, accountID int64) error {
+func (s *ServiceCenterService) BindExistingAccount(ctx context.Context, userID, accountID int64) error {
 	return s.mutateUser(ctx, userID, accountID, func(ctx context.Context) error {
 		if _, err := s.admin.GetUser(ctx, userID); err != nil {
 			return err
@@ -989,7 +989,7 @@ func (s *OnboardingService) BindExistingAccount(ctx context.Context, userID, acc
 	})
 }
 
-func (s *OnboardingService) UnbindAccount(ctx context.Context, accountID int64) error {
+func (s *ServiceCenterService) UnbindAccount(ctx context.Context, accountID int64) error {
 	account, err := s.admin.GetAccount(ctx, accountID)
 	if err != nil || account == nil {
 		return ErrOnboardingAccountMissing
@@ -1007,7 +1007,7 @@ func (s *OnboardingService) UnbindAccount(ctx context.Context, accountID int64) 
 	})
 }
 
-func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdminOverview, error) {
+func (s *ServiceCenterService) AdminOverview(ctx context.Context) (*ServiceManagementOverview, error) {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -1027,7 +1027,7 @@ func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdmin
 	if err != nil {
 		return nil, err
 	}
-	accountsByOwner := make(map[int64][]OnboardingAccountSummary)
+	accountsByOwner := make(map[int64][]ServiceAccountSummary)
 	unitsByOwner := make(map[int64]int)
 	for _, account := range allAccounts {
 		owner := accountOwnerID(account)
@@ -1044,8 +1044,8 @@ func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdmin
 	for i := range bindings {
 		bindingMap[bindings[i].UserID] = &bindings[i]
 	}
-	overview := &OnboardingAdminOverview{Config: publicOnboardingConfig(stored), Users: make([]OnboardingAdminUser, 0, len(users)), UnassignedAccounts: make([]OnboardingAccountSummary, 0)}
-	overview.TemplateAccounts = make([]OnboardingAccountSummary, 0)
+	overview := &ServiceManagementOverview{Config: publicServiceCenterConfig(stored), Users: make([]ServiceManagementUser, 0, len(users)), UnassignedAccounts: make([]ServiceAccountSummary, 0)}
+	overview.TemplateAccounts = make([]ServiceAccountSummary, 0)
 	for _, account := range allAccounts {
 		if validOnboardingTemplate(&account) {
 			overview.TemplateAccounts = append(overview.TemplateAccounts, onboardingAccountSummary(account))
@@ -1058,9 +1058,9 @@ func (s *OnboardingService) AdminOverview(ctx context.Context) (*OnboardingAdmin
 	for _, user := range users {
 		summaries := accountsByOwner[user.ID]
 		if summaries == nil {
-			summaries = []OnboardingAccountSummary{}
+			summaries = []ServiceAccountSummary{}
 		}
-		overview.Users = append(overview.Users, OnboardingAdminUser{UserID: user.ID, Email: user.Email, Username: user.Username, Discord: bindingMap[user.ID], Accounts: summaries, AccountUnits: unitsByOwner[user.ID]})
+		overview.Users = append(overview.Users, ServiceManagementUser{UserID: user.ID, Email: user.Email, Username: user.Username, Discord: bindingMap[user.ID], Accounts: summaries, AccountUnits: unitsByOwner[user.ID]})
 	}
 	if accountsByOwner[0] != nil {
 		overview.UnassignedAccounts = accountsByOwner[0]

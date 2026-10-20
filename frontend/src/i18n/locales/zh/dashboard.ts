@@ -56,35 +56,21 @@ export default {
     viewUsage: '查看使用记录',
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
-    addBalanceWithCode: '使用兑换码充值',
-    pressure5h: {
-      normal: '目前池容量充足，可借用其他用户的闲置容量。',
-      peak: '目前处于高峰状态，动态公平份额保护已生效。',
-      limited: '你的近 5 小时用量已超过当前公平份额。',
-      usage: '5 小时用量：{value}%',
-      remaining: '剩余：{value}%',
-      recover: '预计恢复：{time}'
-    }
+    addBalanceWithCode: '使用兑换码充值'
+  },
+
+  serviceCenter: {
+    title: '服务中心',
+    adminTitle: '服务管理',
+    description: '在同一页面完成账号接入、使用配置和滚动用量查看。',
+    setupTitle: '新手引导'
   },
 
   dynamic5h: {
-    workspaceTitle: '服务中心',
-    adminWorkspaceTitle: '服务管理',
     weeklyAllowance: '订阅周额度：{value}',
-    workspaceDescription: '在同一页面完成账号接入、使用配置和滚动公平用量查看。',
-    setupTitle: '新手引导',
-    poolFiveHour: '账号池平均 5 小时用量',
-    poolSevenDay: '账号池平均 7 天用量',
-    poolSamples: '窗口样本（5 小时 / 7 天）',
-    ready: '已就绪',
-    accountWindows: '账号池用量窗口',
-    searchAccounts: '搜索账号名称或平台',
-    windowUnavailable: '暂无窗口数据',
-    noAccounts: '暂无匹配账号',
     updatedAt: '数据更新时间',
     stale: '数据已过期，暂不执行限额保护',
     title: '5 小时限额',
-    description: '以有效订阅周美元额度的 15% 为基准，统计最近五小时的实际消费。',
     unavailable: '暂无设有周美元额度的有效订阅，不执行额外五小时限制；订阅和账号自身的限制仍然有效。',
     disabled: '五小时尖峰保护已停用。',
     normal: '正常',

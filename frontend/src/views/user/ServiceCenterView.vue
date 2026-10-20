@@ -3,15 +3,15 @@
     <div class="w-full space-y-8">
       <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('dynamic5h.workspaceTitle') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('dynamic5h.workspaceDescription') }}</p>
+          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">{{ t('serviceCenter.title') }}</h1>
+          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('serviceCenter.description') }}</p>
         </div>
         <button class="btn btn-secondary inline-flex h-9 w-9 items-center justify-center" :disabled="loading" :title="t('dynamic5h.refresh')" @click="load">
           <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
         </button>
       </header>
-      <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('dynamic5h.workspaceTitle')">
-        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'setup'">{{ t('dynamic5h.setupTitle') }}</button>
+      <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('serviceCenter.title')">
+        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'setup'">{{ t('serviceCenter.setupTitle') }}</button>
         <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
         <button role="tab" :aria-selected="tab === 'pool'" :class="tab === 'pool' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'pool'">号池总览</button>
       </div>
@@ -27,7 +27,7 @@
               <span v-if="status.currently_limited" class="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('dynamic5h.limited') }}</span>
               <span v-else class="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('dynamic5h.available') }}</span>
             </div>
-            <Dynamic5hUsageBar :label="t('dynamic5h.usage')" :value="status.usage_percent" />
+            <UsageWindowBar :label="t('dynamic5h.usage')" :value="status.usage_percent" />
             <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">{{ money(status.usage_usd) }} / {{ money(status.limit_usd) }} · {{ t('dynamic5h.weeklyAllowance', { value: money(status.seven_day_limit_usd) }) }}</p>
             <p class="mt-3 text-sm font-medium" :class="warningClass">{{ t(`dynamic5h.warning.${status.warning_level || 'normal'}`) }}</p>
             <div class="mt-8 grid gap-5 sm:grid-cols-2">
@@ -90,12 +90,12 @@
                 <tr v-for="(account, index) in status.pool.accounts" :key="index" class="border-b border-gray-100 dark:border-dark-700">
                   <td class="min-w-40 px-4 py-5"><p class="break-words font-medium">{{ account.name || '未命名账号' }}</p><p class="mt-2 text-xs text-gray-500">{{ platformLabel(account.platform) }}</p></td>
                   <td class="min-w-56 px-4 py-5">
-                    <Dynamic5hUsageBar v-if="account.five_hour_used_percent !== undefined" label="5h 用量" :value="account.five_hour_used_percent" />
+                    <UsageWindowBar v-if="account.five_hour_used_percent !== undefined" label="5h 用量" :value="account.five_hour_used_percent" />
                     <p v-else class="text-gray-500">暂无窗口数据</p>
                     <p class="mt-3 whitespace-nowrap text-xs text-gray-500">{{ resetRemaining(account.five_hour_reset_at, account.five_hour_used_percent) }}</p>
                   </td>
                   <td class="min-w-56 px-4 py-5">
-                    <Dynamic5hUsageBar v-if="account.seven_day_used_percent !== undefined" label="7d 用量" :value="account.seven_day_used_percent" />
+                    <UsageWindowBar v-if="account.seven_day_used_percent !== undefined" label="7d 用量" :value="account.seven_day_used_percent" />
                     <p v-else class="text-gray-500">暂无窗口数据</p>
                     <p class="mt-3 whitespace-nowrap text-xs text-gray-500">{{ resetRemaining(account.seven_day_reset_at, account.seven_day_used_percent) }}</p>
                   </td>
@@ -109,7 +109,7 @@
         </section>
         <p v-else class="py-12 text-center text-sm text-gray-500">{{ loading ? '正在加载号池信息…' : '号池信息暂不可用，请刷新重试。' }}</p>
       </div>
-      <div v-show="tab === 'setup'" role="tabpanel"><OnboardingView /></div>
+      <div v-show="tab === 'setup'" role="tabpanel"><ServiceSetupPanel /></div>
     </div>
   </AppLayout>
 </template>
@@ -119,11 +119,11 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
+import UsageWindowBar from '@/components/service/UsageWindowBar.vue'
 import Icon from '@/components/icons/Icon.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
-import OnboardingView from '@/views/user/OnboardingView.vue'
-import { getDynamic5hPressure } from '@/api/user'
+import ServiceSetupPanel from '@/components/service/ServiceSetupPanel.vue'
+import { getDynamic5hPressure } from '@/api/serviceCenter'
 import { useAppStore } from '@/stores/app'
 import type { Dynamic5hUserStatus } from '@/types'
 

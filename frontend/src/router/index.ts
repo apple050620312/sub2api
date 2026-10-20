@@ -224,14 +224,14 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/service-center',
     alias: '/5h-pressure',
-    name: 'Dynamic5hPressure',
-    component: () => import('@/views/user/Dynamic5hPressureView.vue'),
+    name: 'ServiceCenter',
+    component: () => import('@/views/user/ServiceCenterView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
       title: 'Service Center',
-      titleKey: 'dynamic5h.workspaceTitle',
-      descriptionKey: 'dynamic5h.workspaceDescription'
+      titleKey: 'serviceCenter.title',
+      descriptionKey: 'serviceCenter.description'
     }
   },
   {
@@ -458,14 +458,14 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/admin/service-center',
     alias: '/admin/5h-pressure',
-    name: 'AdminDynamic5hPressure',
-    component: () => import('@/views/admin/Dynamic5hPressureView.vue'),
+    name: 'ServiceManagement',
+    component: () => import('@/views/admin/ServiceManagementView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
       title: 'Service management',
-      titleKey: 'dynamic5h.adminWorkspaceTitle',
-      descriptionKey: 'dynamic5h.workspaceDescription'
+      titleKey: 'serviceCenter.adminTitle',
+      descriptionKey: 'serviceCenter.description'
     }
   },
   {

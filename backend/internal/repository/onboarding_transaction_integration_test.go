@@ -72,7 +72,7 @@ func TestOnboardingCountTierLifecycle(t *testing.T) {
 	subRepo := NewUserSubscriptionRepository(client)
 	subService := service.NewSubscriptionService(NewGroupRepository(client, integrationDB), subRepo, nil, client, nil)
 	t.Cleanup(subService.Stop)
-	svc := service.NewOnboardingService(client, &onboardingTierTestAdmin{accounts: accountRepo}, nil, subService, nil, nil, nil)
+	svc := service.NewServiceCenterService(client, &onboardingTierTestAdmin{accounts: accountRepo}, nil, subService, nil, nil, nil)
 	user := mustCreateUser(t, client, &service.User{Email: uuid.NewString() + "@example.com"})
 	var originalConfig []byte
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT config FROM onboarding_config WHERE id=1`).Scan(&originalConfig))
@@ -102,7 +102,7 @@ func TestOnboardingCountTierLifecycle(t *testing.T) {
 		account := mustCreateAccount(t, client, &service.Account{Name: uuid.NewString(), Platform: service.PlatformOpenAI, Credentials: map[string]any{"plan_type": plan}})
 		accountIDs = append(accountIDs, account.ID)
 	}
-	payload, err := json.Marshal(service.OnboardingConfig{Enabled: true, SubscriptionRules: rules})
+	payload, err := json.Marshal(service.ServiceCenterConfig{Enabled: true, SubscriptionRules: rules})
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE onboarding_config SET config=$1::jsonb WHERE id=1`, payload)
 	require.NoError(t, err)

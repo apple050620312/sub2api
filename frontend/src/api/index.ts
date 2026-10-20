@@ -25,7 +25,7 @@ export { channelMonitorUserAPI } from './channelMonitor'
 
 // Admin APIs
 export { adminAPI } from './admin'
-export { onboardingAPI } from './admin/onboarding'
+export { serviceCenterAPI } from './admin/serviceCenter'
 
 // Default export
 export { default } from './client'

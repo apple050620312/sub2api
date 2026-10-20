@@ -1053,9 +1053,7 @@ type GatewayConfig struct {
 	// OpenAIProxyStreamCircuit: Responses SSE 代理断流熔断策略。
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
-	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
-	// Dynamic5hPressure protects the shared upstream five-hour quota pool with
-	// dynamic equal-share rolling windows only while projected demand exceeds supply.
+	ImageConcurrency  ImageConcurrencyConfig  `mapstructure:"image_concurrency"`
 	Dynamic5hPressure Dynamic5hPressureConfig `mapstructure:"dynamic_5h_pressure"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
@@ -1143,7 +1141,6 @@ type GatewayConfig struct {
 }
 
 // Dynamic5hPressureConfig controls the pool-wide five-hour pressure guard.
-// It intentionally has no fixed per-user money or token allowance setting.
 type Dynamic5hPressureConfig struct {
 	Enabled                bool    `mapstructure:"enabled"`
 	RefreshIntervalSeconds int     `mapstructure:"refresh_interval_seconds"`

@@ -44,7 +44,7 @@ func validateServicePoolResetConfig(next ServicePoolResetConfig, discord, curren
 }
 
 type servicePoolResetState struct {
-	Gmail       gmailResetMonitorState `json:"gmail"`
+	Monitor     resetMonitorState      `json:"monitor"`
 	LastResetAt time.Time              `json:"last_reset_at"`
 	Status      ServicePoolResetStatus `json:"status"`
 }

@@ -36,8 +36,8 @@ func TestOnboardingAdminBindsOnlyUnclaimedGuildMembers(t *testing.T) {
 			require.NoError(t, err)
 			client := dbent.NewClient(dbent.Driver(entsql.OpenDB(dialect.Postgres, database)))
 			t.Cleanup(func() { _ = client.Close() })
-			svc := NewOnboardingService(client, &onboardingTestAdmin{}, nil, nil, nil, onboardingTestEncryptor{}, nil)
-			payload, err := json.Marshal(onboardingStoredConfig{OnboardingConfig: OnboardingConfig{Enabled: true, Discord: OnboardingDiscordConfig{GuildID: "guild", RoleID: "role"}}, DiscordBotTokenEncrypted: "test-token"})
+			svc := NewServiceCenterService(client, &onboardingTestAdmin{}, nil, nil, nil, onboardingTestEncryptor{}, nil)
+			payload, err := json.Marshal(serviceCenterStoredConfig{ServiceCenterConfig: ServiceCenterConfig{Enabled: true, Discord: OnboardingDiscordConfig{GuildID: "guild", RoleID: "role"}}, DiscordBotTokenEncrypted: "test-token"})
 			require.NoError(t, err)
 			mock.ExpectQuery("SELECT config FROM onboarding_config").WillReturnRows(sqlmock.NewRows([]string{"config"}).AddRow(payload))
 			roles := 0

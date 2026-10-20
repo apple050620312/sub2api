@@ -20,16 +20,16 @@ type DiscordLoginProfile struct {
 	accessToken string
 }
 
-func discordLoginConfigured(stored *onboardingStoredConfig) bool {
+func discordLoginConfigured(stored *serviceCenterStoredConfig) bool {
 	return stored != nil && stored.Discord.ClientID != "" && stored.Discord.ClientSecret != "" && stored.Discord.BotToken != "" && stored.Discord.GuildID != "" && strings.TrimSpace(stored.Discord.RedirectURI) != ""
 }
 
-func (s *OnboardingService) DiscordLoginReady(ctx context.Context) (bool, error) {
+func (s *ServiceCenterService) DiscordLoginReady(ctx context.Context) (bool, error) {
 	stored, err := s.loadConfig(ctx)
 	return discordLoginConfigured(stored), err
 }
 
-func (s *OnboardingService) StartDiscordLoginAuthorization(ctx context.Context, state string) (string, error) {
+func (s *ServiceCenterService) StartDiscordLoginAuthorization(ctx context.Context, state string) (string, error) {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return "", err
@@ -41,7 +41,7 @@ func (s *OnboardingService) StartDiscordLoginAuthorization(ctx context.Context, 
 	return "https://discord.com/oauth2/authorize?" + query.Encode(), nil
 }
 
-func (s *OnboardingService) exchangeDiscordAuthorization(ctx context.Context, stored *onboardingStoredConfig, code, redirectURI string) (*DiscordLoginProfile, error) {
+func (s *ServiceCenterService) exchangeDiscordAuthorization(ctx context.Context, stored *serviceCenterStoredConfig, code, redirectURI string) (*DiscordLoginProfile, error) {
 	form := url.Values{"client_id": {stored.Discord.ClientID}, "client_secret": {stored.Discord.ClientSecret}, "grant_type": {"authorization_code"}, "code": {code}, "redirect_uri": {redirectURI}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://discord.com/api/oauth2/token", strings.NewReader(form.Encode()))
 	if err != nil {
@@ -81,7 +81,7 @@ func (s *OnboardingService) exchangeDiscordAuthorization(ctx context.Context, st
 	return &profile, nil
 }
 
-func (s *OnboardingService) joinDiscordMember(ctx context.Context, stored *onboardingStoredConfig, profile *DiscordLoginProfile) error {
+func (s *ServiceCenterService) joinDiscordMember(ctx context.Context, stored *serviceCenterStoredConfig, profile *DiscordLoginProfile) error {
 	joinURL := "https://discord.com/api/guilds/" + url.PathEscape(stored.Discord.GuildID) + "/members/" + url.PathEscape(profile.ID)
 	joinBody, _ := json.Marshal(map[string]string{"access_token": profile.accessToken})
 	joinReq, err := http.NewRequestWithContext(ctx, http.MethodPut, joinURL, strings.NewReader(string(joinBody)))
@@ -114,7 +114,7 @@ func (s *OnboardingService) joinDiscordMember(ctx context.Context, stored *onboa
 	return nil
 }
 
-func (s *OnboardingService) CompleteDiscordLoginAuthorization(ctx context.Context, code string) (*DiscordLoginProfile, error) {
+func (s *ServiceCenterService) CompleteDiscordLoginAuthorization(ctx context.Context, code string) (*DiscordLoginProfile, error) {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (s *OnboardingService) CompleteDiscordLoginAuthorization(ctx context.Contex
 	return profile, nil
 }
 
-func (s *OnboardingService) BindDiscordLogin(ctx context.Context, userID int64, profile *DiscordLoginProfile) error {
+func (s *ServiceCenterService) BindDiscordLogin(ctx context.Context, userID int64, profile *DiscordLoginProfile) error {
 	stored, err := s.loadConfig(ctx)
 	if err != nil {
 		return err

@@ -11,14 +11,14 @@ vi.mock('vue-i18n', async () => {
 const api = vi.hoisted(() => ({ userOverview: vi.fn(), adminOverview: vi.fn(), pause: vi.fn(), remove: vi.fn(), bindAccount: vi.fn(), bindDiscord: vi.fn(), members: vi.fn(), channels: vi.fn(), showError: vi.fn(), listKeys: vi.fn(), createKey: vi.fn(), updateConfig: vi.fn(), startReauth: vi.fn(), completeReauth: vi.fn() }))
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }), useRouter: () => ({ replace: vi.fn() }) }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: api.showError, showSuccess: vi.fn() }) }))
-vi.mock('@/api/user', () => ({ getOnboardingOverview: api.userOverview, setOnboardingAccountPaused: api.pause, deleteOnboardingAccount: api.remove, startOnboardingAccountReauthorization: api.startReauth, completeOnboardingAccountReauthorization: api.completeReauth }))
-vi.mock('@/api/admin/onboarding', () => ({ onboardingAPI: { getOverview: api.adminOverview, bindAccount: api.bindAccount, bindDiscordMember: api.bindDiscord, getDiscordMembers: api.members, getDiscordChannels: api.channels, updateConfig: api.updateConfig } }))
+vi.mock('@/api/serviceCenter', () => ({ getServiceCenterOverview: api.userOverview, setServiceAccountPaused: api.pause, deleteServiceAccount: api.remove, startServiceAccountReauthorization: api.startReauth, completeServiceAccountReauthorization: api.completeReauth }))
+vi.mock('@/api/admin/serviceCenter', () => ({ serviceCenterAPI: { getOverview: api.adminOverview, bindAccount: api.bindAccount, bindDiscordMember: api.bindDiscord, getDiscordMembers: api.members, getDiscordChannels: api.channels, updateConfig: api.updateConfig } }))
 vi.mock('@/api/admin/groups', () => ({ getAll: vi.fn().mockResolvedValue([{ id: 9, name: 'Plus 周额度', platform: 'openai', status: 'active', subscription_type: 'subscription' }]) }))
 vi.mock('@/api/groups', () => ({ userGroupsAPI: { getAvailable: vi.fn().mockResolvedValue([{ id: 9, name: 'Plus 周额度', platform: 'openai', status: 'active', subscription_type: 'subscription' }]) } }))
 vi.mock('@/api/keys', () => ({ keysAPI: { create: api.createKey, list: api.listKeys } }))
 
-import UserOnboardingView from '@/views/user/OnboardingView.vue'
-import AdminOnboardingView from '@/views/admin/OnboardingView.vue'
+import ServiceSetupPanel from '@/components/service/ServiceSetupPanel.vue'
+import ServiceManagementPanel from '@/components/service/ServiceManagementPanel.vue'
 
 const account = { id: 42, name: '共享 GPT Plus', email: 'gpt@example.com', plan_type: 'plus', status: 'active', paused: false, schedulable: true, concurrency: 3, groups: ['Plus 周额度'], usage: { five_hour_used_percent: 25 }, created_at: '2026-10-18T00:00:00Z', updated_at: '2026-10-18T00:00:00Z' }
 const config = { enabled: true, discord: { client_id: '', client_secret_configured: true, bot_token_configured: true, guild_id: 'guild', role_id: 'role', redirect_uri: '' }, subscription_rules: {}, openai_redirect_uri: '', ccswitch_download_url: '' }
@@ -41,7 +41,7 @@ describe('service center account management', () => {
   it('reauthorizes an existing failed account through its named dialog', async () => {
     api.userOverview.mockResolvedValueOnce({ accounts: [{ ...account, status: 'error' }], account_units: 0, subscriptions: [], ready_for_key: false, ready_for_account: false, config })
     vi.spyOn(window, 'open').mockReturnValueOnce(null)
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '重新授权')!.trigger('click')
     const dialog = wrapper.findComponent(BaseDialog)
@@ -63,7 +63,7 @@ describe('service center account management', () => {
   it('keeps an identity mismatch visible without closing the reauthorization dialog', async () => {
     vi.spyOn(window, 'open').mockReturnValueOnce(null)
     api.completeReauth.mockRejectedValueOnce({ response: { data: { message: '授权身份与原 GPT 账号不一致' } } })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '重新授权')!.trigger('click')
     const dialog = wrapper.findComponent(BaseDialog)
@@ -80,7 +80,7 @@ describe('service center account management', () => {
 
   it('rejects an incomplete callback before submitting credentials', async () => {
     vi.spyOn(window, 'open').mockReturnValueOnce(null)
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '重新授权')!.trigger('click')
     const dialog = wrapper.findComponent(BaseDialog)
@@ -96,7 +96,7 @@ describe('service center account management', () => {
 
   it('confirms a named template and named notification channel before saving', async () => {
     api.adminOverview.mockResolvedValueOnce({ config: { ...config, account_template_id: 42, pool_reset: { enabled: true, channel_id: '987654', message: '全员配额已恢复' } }, users: [], unassigned_accounts: [], template_accounts: [account] })
-    const wrapper = mount(AdminOnboardingView, { global })
+    const wrapper = mount(ServiceManagementPanel, { global })
     await flushPromises()
     const selector = wrapper.findAllComponents(Select).find(select => select.props('ariaLabel') === '指定模板账号')!
     expect(selector.props('options')).toContainEqual({ value: 42, label: '共享 GPT Plus · gpt@example.com' })
@@ -113,7 +113,7 @@ describe('service center account management', () => {
 
   it('explains that account onboarding needs administrator configuration after Discord is bound', async () => {
     api.userOverview.mockResolvedValueOnce({ accounts: [], subscriptions: [], discord: { status: 'active', discord_username: '测试成员' }, account_units: 0, ready_for_key: false, ready_for_account: false, account_setup_message: '管理员尚未指定 GPT 模板账号。', config })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     expect(wrapper.text()).toContain('管理员尚未指定 GPT 模板账号。')
     expect(wrapper.findAll('button').find(button => button.text() === '打开 OpenAI 授权')!.attributes('disabled')).toBeDefined()
@@ -121,7 +121,7 @@ describe('service center account management', () => {
   })
   it('completes step two using an existing key and imports it in step three', async () => {
     api.listKeys.mockResolvedValue({ items: [existingKey], total: 1 })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     const keyStep = wrapper.find('[aria-label="第二步：API Key"]')
     expect(keyStep.text()).toContain('已完成')
@@ -137,7 +137,7 @@ describe('service center account management', () => {
 
   it('imports the selected key by name without showing numeric IDs', async () => {
     api.listKeys.mockResolvedValue({ items: [existingKey, { ...existingKey, id: 89, name: '我的第二个 Codex', key: 'sk-second' }], total: 2 })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     wrapper.findAllComponents(Select).find(select => select.props('ariaLabel') === '用于 CC Switch 的 API Key')!.vm.$emit('update:modelValue', 89)
     await flushPromises()
@@ -149,7 +149,7 @@ describe('service center account management', () => {
 
   it('finds an existing usable key beyond the first page', async () => {
     api.listKeys.mockResolvedValueOnce({ items: [{ ...existingKey, status: 'inactive' }], total: 2 }).mockResolvedValueOnce({ items: [{ ...existingKey, id: 89, name: '第二页的 Codex', key: 'sk-next-page' }], total: 2 })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     expect(api.listKeys).toHaveBeenNthCalledWith(1, 1, 100)
     expect(api.listKeys).toHaveBeenNthCalledWith(2, 2, 100)
@@ -160,7 +160,7 @@ describe('service center account management', () => {
 
   it('does not import a disabled, expired or exhausted key', async () => {
     api.listKeys.mockResolvedValue({ items: [{ ...existingKey, status: 'inactive' }, { ...existingKey, id: 89, expires_at: '2020-01-01T00:00:00Z' }, { ...existingKey, id: 90, quota: 10, quota_used: 10 }], total: 3 })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     expect(wrapper.find('[aria-label="第二步：API Key"]').text()).toContain('未完成')
     expect(wrapper.find('a[href^="ccswitch://"]').exists()).toBe(false)
@@ -170,7 +170,7 @@ describe('service center account management', () => {
   it('creates a key when needed, then reuses it for import', async () => {
     api.createKey.mockResolvedValue(existingKey)
     api.listKeys.mockResolvedValueOnce({ items: [], total: 0 }).mockResolvedValue({ items: [existingKey], total: 1 })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '创建 API Key')!.trigger('click')
     await flushPromises()
@@ -182,7 +182,7 @@ describe('service center account management', () => {
 
   it('shows an explicit retry when existing keys cannot be loaded', async () => {
     api.listKeys.mockRejectedValueOnce(new Error('offline'))
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     expect(wrapper.find('[role="alert"]').text()).toContain('加载已有 API Key 失败')
     expect(wrapper.find('a[href^="ccswitch://"]').exists()).toBe(false)
@@ -191,7 +191,7 @@ describe('service center account management', () => {
   })
 
   it('configures five account-count tiers and confirms subscription names', async () => {
-    const wrapper = mount(AdminOnboardingView, { global })
+    const wrapper = mount(ServiceManagementPanel, { global })
     await flushPromises()
     const tierSelectors = wrapper.findAllComponents(Select).filter(select => select.props('ariaLabel')?.endsWith('对应订阅'))
     expect(tierSelectors).toHaveLength(5)
@@ -208,14 +208,14 @@ describe('service center account management', () => {
 
   it('labels a team account as Business Standard', async () => {
     api.userOverview.mockResolvedValueOnce({ accounts: [{ ...account, plan_type: 'team' }], account_units: 1, subscriptions: [], ready_for_key: true, ready_for_account: true, config })
-    const wrapper = mount(UserOnboardingView, { global })
+    const wrapper = mount(ServiceSetupPanel, { global })
     await flushPromises()
     expect(wrapper.find('table').text()).toContain('Business Standard')
     expect(wrapper.find('table').text()).not.toContain('Business Premium')
     wrapper.unmount()
   })
   it('shows the owner account and confirms pause before updating it', async () => {
-    const wrapper = mount(UserOnboardingView, { global, attachTo: document.body })
+    const wrapper = mount(ServiceSetupPanel, { global, attachTo: document.body })
     await flushPromises()
     expect(wrapper.text()).toContain('gpt@example.com')
     const pause = wrapper.findAll('button').find(button => button.text() === '暂停')!
@@ -230,7 +230,7 @@ describe('service center account management', () => {
 
   it('keeps a failed account operation visible to the user', async () => {
     api.remove.mockRejectedValueOnce({ response: { data: { message: '账号不存在' } } })
-    const wrapper = mount(UserOnboardingView, { global, attachTo: document.body })
+    const wrapper = mount(ServiceSetupPanel, { global, attachTo: document.body })
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '删除')!.trigger('click')
     wrapper.findComponent(ConfirmDialog).vm.$emit('confirm')
@@ -241,7 +241,7 @@ describe('service center account management', () => {
   })
 
   it('identifies both the user and GPT account when assigning', async () => {
-    const wrapper = mount(AdminOnboardingView, { global, attachTo: document.body })
+    const wrapper = mount(ServiceManagementPanel, { global, attachTo: document.body })
     await flushPromises()
     expect(wrapper.text()).toContain('owner@example.com')
     await wrapper.findAll('button').find(button => button.text() === '分配账号')!.trigger('click')
@@ -262,7 +262,7 @@ describe('service center account management', () => {
   })
 
   it('binds a selected existing Discord member after showing both identities', async () => {
-    const wrapper = mount(AdminOnboardingView, { global, attachTo: document.body })
+    const wrapper = mount(ServiceManagementPanel, { global, attachTo: document.body })
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '绑定 Discord')!.trigger('click')
     await flushPromises()
