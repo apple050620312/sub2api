@@ -12,7 +12,7 @@
       </header>
       <div class="flex flex-wrap gap-3" role="tablist" :aria-label="t('dynamic5h.adminWorkspaceTitle')">
         <button role="tab" :aria-selected="tab === 'usage'" :class="tab === 'usage' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'usage'">{{ t('dynamic5h.title') }}</button>
-        <button role="tab" :aria-selected="tab === 'setup'" :class="tab === 'setup' ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = 'setup'">{{ t('dynamic5h.setupTitle') }}</button>
+        <button v-for="panel in setupTabs" :key="panel.value" role="tab" :aria-selected="tab === panel.value" :class="tab === panel.value ? 'btn btn-primary' : 'btn btn-secondary'" @click="tab = panel.value">{{ panel.label }}</button>
       </div>
       <div v-show="tab === 'usage'" class="space-y-8" role="tabpanel">
       <div v-if="loading && !overview" class="flex justify-center py-16"><LoadingSpinner /></div>
@@ -46,7 +46,7 @@
         </div>
       </div>
       </div>
-      <div v-show="tab === 'setup'" role="tabpanel"><OnboardingView /></div>
+      <div v-show="tab !== 'usage'" role="tabpanel"><OnboardingView :panel="tab === 'usage' ? 'accounts' : tab" /></div>
       <ConfirmDialog :show="!!confirmation" :title="confirmation?.title || ''" :message="confirmation?.message || ''" @cancel="confirmation = null" @confirm="confirmAction" />
     </div>
   </AppLayout>
@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Dynamic5hUsageBar from '@/components/common/Dynamic5hUsageBar.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -67,7 +68,10 @@ import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolic
 import type { Dynamic5hAdminOverview, Dynamic5hAdminUserStatus } from '@/types'
 
 const { t } = useI18n()
-const tab = ref<'usage' | 'setup'>('usage')
+type SetupTab = 'accounts' | 'discord' | 'onboarding' | 'reset'
+const setupTabs: Array<{ value: SetupTab; label: string }> = [{ value: 'accounts', label: '用户与账号' }, { value: 'discord', label: 'Discord' }, { value: 'onboarding', label: '引导与订阅' }, { value: 'reset', label: '重置监测' }]
+const route = useRoute()
+const tab = ref<'usage' | SetupTab>(String(route.query.state || '').startsWith('gmail-reset.') ? 'reset' : 'usage')
 const money = (value = 0) => `$${value.toFixed(2)}`
 const overview = ref<Dynamic5hAdminOverview | null>(null)
 const loading = ref(false)

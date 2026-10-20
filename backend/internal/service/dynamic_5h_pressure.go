@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -71,14 +72,29 @@ type Dynamic5hUserStatus struct {
 }
 
 type Dynamic5hPublicPool struct {
-	FiveHourUsedPercent *float64   `json:"five_hour_used_percent,omitempty"`
-	FiveHourSampleCount int        `json:"five_hour_sample_count"`
-	SevenDayUsedPercent *float64   `json:"seven_day_used_percent,omitempty"`
-	SevenDaySampleCount int        `json:"seven_day_sample_count"`
-	Stale               bool       `json:"stale"`
-	EvaluatedAt         time.Time  `json:"evaluated_at"`
-	NextResetAt         *time.Time `json:"next_reset_at,omitempty"`
+	PressureStatus      Dynamic5hPressureStatus  `json:"pressure_status"`
+	Accounts            []Dynamic5hPublicAccount `json:"accounts"`
+	FiveHourUsedPercent *float64                 `json:"five_hour_used_percent,omitempty"`
+	FiveHourSampleCount int                      `json:"five_hour_sample_count"`
+	SevenDayUsedPercent *float64                 `json:"seven_day_used_percent,omitempty"`
+	SevenDaySampleCount int                      `json:"seven_day_sample_count"`
+	Stale               bool                     `json:"stale"`
+	EvaluatedAt         time.Time                `json:"evaluated_at"`
+	NextResetAt         *time.Time               `json:"next_reset_at,omitempty"`
 }
+
+type Dynamic5hPublicAccount struct {
+	Name          string     `json:"name"`
+	Platform      string     `json:"platform"`
+	Included      bool       `json:"included"`
+	Reason        string     `json:"reason"`
+	FiveHourUsed  *float64   `json:"five_hour_used_percent,omitempty"`
+	FiveHourReset *time.Time `json:"five_hour_reset_at,omitempty"`
+	SevenDayUsed  *float64   `json:"seven_day_used_percent,omitempty"`
+	SevenDayReset *time.Time `json:"seven_day_reset_at,omitempty"`
+}
+
+var dynamic5hPublicEmailPattern = regexp.MustCompile(`[^\s<>@]+@[^\s<>@]+`)
 
 type Dynamic5hAdminUserStatus struct {
 	UserID int64  `json:"user_id"`
@@ -449,13 +465,19 @@ func (s *Dynamic5hPressureService) PublicUserStatus(ctx context.Context, userID 
 		return result, err
 	}
 	pressure := s.AdminStatus(ctx, false)
-	result.Pool = &Dynamic5hPublicPool{Stale: pressure.Stale, EvaluatedAt: pressure.EvaluatedAt, NextResetAt: pressure.NextResetAt}
+	result.Pool = &Dynamic5hPublicPool{PressureStatus: pressure, Accounts: []Dynamic5hPublicAccount{}, Stale: pressure.Stale, EvaluatedAt: pressure.EvaluatedAt, NextResetAt: pressure.NextResetAt}
 	if s.accountRepo != nil {
 		accounts, err := s.accountRepo.ListAllWithFilters(ctx, "", "", "", "", 0, "")
 		if err != nil {
 			return result, err
 		}
 		result.Pool.FiveHourUsedPercent, result.Pool.FiveHourSampleCount, result.Pool.SevenDayUsedPercent, result.Pool.SevenDaySampleCount = dynamic5hPublicPoolUsage(accounts, s.now().UTC())
+		for index := range accounts {
+			account := &accounts[index]
+			diagnostic := dynamic5hAccountDiagnostic(account, s.now().UTC())
+			name := dynamic5hPublicEmailPattern.ReplaceAllString(account.Name, "[邮箱已隐藏]")
+			result.Pool.Accounts = append(result.Pool.Accounts, Dynamic5hPublicAccount{Name: name, Platform: diagnostic.Platform, Included: diagnostic.Included, Reason: diagnostic.Reason, FiveHourUsed: diagnostic.FiveHourUsed, FiveHourReset: diagnostic.FiveHourReset, SevenDayUsed: diagnostic.SevenDayUsed, SevenDayReset: diagnostic.SevenDayReset})
+		}
 	}
 	return result, nil
 }

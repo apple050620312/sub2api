@@ -310,7 +310,10 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 	defer func() { _ = tx.Rollback() }()
 	ctx = dbent.NewTxContext(ctx, tx)
 	if next.PoolReset.Enabled != current.PoolReset.Enabled {
-		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_state SET state='{}'::jsonb, updated_at=NOW() WHERE id=1`); err != nil {
+		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_gmail SET monitor_since=NOW(),version=version+1 WHERE id=1`); err != nil {
+			return OnboardingConfig{}, err
+		}
+		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_state SET next_check_at=NOW() WHERE id=1`); err != nil {
 			return OnboardingConfig{}, err
 		}
 	}

@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-8">
-    <section class="card overflow-visible">
+    <section v-show="panel === 'all' || panel === 'accounts'" class="card overflow-visible">
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 p-6 dark:border-dark-700">
         <div><h2 class="text-lg font-semibold">用户与账号</h2><p class="mt-1 text-sm text-gray-500">账号优先服务所属用户，忙碌时自动回退公共池。</p></div>
         <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
@@ -14,20 +14,19 @@
         <template #cell-actions="{ row }"><div class="flex flex-wrap gap-2"><button class="btn btn-secondary btn-sm" @click="openAssignment(row, 'account')">分配账号</button><button class="btn btn-secondary btn-sm" @click="openAssignment(row, 'discord')">绑定 Discord</button></div></template>
       </DataTable>
     </section>
-    <section class="card p-6">
+    <section v-show="panel !== 'accounts'" class="card p-6">
       <div class="mb-6 flex flex-wrap items-start justify-between gap-4"><div><h2 class="text-lg font-semibold">服务配置</h2><p class="mt-1 text-sm text-gray-500">配置 Discord、新手接入流程和自动订阅。保存后会重新核对账号资格。</p></div><button class="btn btn-primary" :disabled="busy || loading" @click="save">{{ busy ? '处理中…' : '保存配置' }}</button></div>
-      <label class="mb-6 flex items-center gap-3 text-sm"><input v-model="form.enabled" type="checkbox" class="rounded" />启用新手引导</label>
-      <div class="grid gap-5 md:grid-cols-2">
+      <label v-show="panel === 'all' || panel === 'onboarding'" class="mb-6 flex items-center gap-3 text-sm"><input v-model="form.enabled" type="checkbox" class="rounded" />启用新手引导</label>
+      <div v-show="panel === 'all' || panel === 'discord'" class="grid gap-5 md:grid-cols-2">
         <label class="space-y-2 text-sm"><span>Discord Client ID</span><input v-model="form.discord.client_id" class="input" /></label>
         <label class="space-y-2 text-sm"><span>Discord Client Secret</span><input v-model="form.discord.client_secret" type="password" autocomplete="new-password" class="input" :placeholder="form.discord.client_secret_configured ? '已配置，留空保持不变' : '请输入 Client Secret'" /></label>
         <label class="space-y-2 text-sm"><span>Discord Bot Token</span><input v-model="form.discord.bot_token" type="password" autocomplete="new-password" class="input" :placeholder="form.discord.bot_token_configured ? '已配置，留空保持不变' : '请输入 Bot Token'" /></label>
         <label class="space-y-2 text-sm"><span>Discord 服务器 ID</span><input v-model="form.discord.guild_id" class="input" /></label>
         <label class="space-y-2 text-sm"><span>Discord 身份组 ID</span><input v-model="form.discord.role_id" class="input" /></label>
         <label class="space-y-2 text-sm"><span>Discord 回调地址</span><input v-model="form.discord.redirect_uri" class="input" placeholder="https://example.com/onboarding" /></label>
-        <label class="space-y-2 text-sm"><span>OpenAI 回调地址</span><input v-model="form.openai_redirect_uri" class="input" placeholder="留空使用默认 OAuth 流程" /></label>
-        <label class="space-y-2 text-sm"><span>CC Switch 下载地址</span><input v-model="form.ccswitch_download_url" class="input" /></label>
       </div>
-      <div class="mt-8 space-y-3">
+      <div v-show="panel === 'all' || panel === 'onboarding'" class="mt-8 space-y-5">
+        <div class="grid gap-5 md:grid-cols-2"><label class="space-y-2 text-sm"><span>OpenAI 回调地址</span><input v-model="form.openai_redirect_uri" class="input" placeholder="留空使用默认 OAuth 流程" /></label><label class="space-y-2 text-sm"><span>CC Switch 下载地址</span><input v-model="form.ccswitch_download_url" class="input" /></label></div>
         <h3 class="font-semibold">新账号调用规则</h3>
         <label class="block text-sm" for="service-account-template">指定模板账号</label>
         <div class="max-w-2xl"><Select id="service-account-template" v-model="form.account_template_id" :options="templateOptions" searchable aria-label="指定模板账号" /></div>
@@ -35,21 +34,26 @@
         <p v-if="!form.account_template_id" class="text-sm text-amber-600" role="alert">尚未指定模板，新用户暂时无法添加账号。</p>
         <p v-else-if="!templateOptions.some(option => option.value === form.account_template_id)" class="text-sm text-amber-600" role="alert">之前指定的模板已不可用，请重新选择。</p>
       </div>
-      <div class="mt-8 space-y-5 border-t border-gray-100 pt-8 dark:border-dark-700">
-        <div><h3 class="font-semibold">全池重置联动</h3><p class="mt-2 text-sm leading-6 text-gray-500">检测全池异常重置或同批新重置券，确认后恢复所有用户的订阅配额，并发送你设置的 Discord 通知。</p></div>
+      <div v-show="panel === 'all' || panel === 'reset'" class="mt-8 space-y-5">
+        <div><h3 class="font-semibold">全员配额重置</h3><p class="mt-2 text-sm leading-6 text-gray-500">通过 Gmail 接收指定来源通知，由模型分析已确认的重置，等待传播后恢复所有用户的有效订阅配额并发送 Discord 通知。</p></div>
         <label class="flex items-center gap-3 text-sm"><input v-model="form.pool_reset.enabled" type="checkbox" class="rounded" />启用自动检测与全员配额重置</label>
         <div class="grid gap-5 md:grid-cols-2">
           <div class="space-y-2 text-sm"><label>Discord 通知频道</label><div class="flex items-start gap-3"><div class="min-w-0 flex-1"><Select v-model="form.pool_reset.channel_id" :options="channelOptions" searchable aria-label="Discord 通知频道" placeholder="选择文字频道" /></div><button class="btn btn-secondary" :disabled="channelsLoading" @click="loadChannels">{{ channelsLoading ? '加载中…' : '刷新频道' }}</button></div><p class="text-xs leading-5 text-gray-500">先保存机器人和服务器配置，再选择频道。机器人需要查看频道和发送消息权限。</p><p v-if="channelError" class="text-sm text-red-600" role="alert">{{ channelError }}</p></div>
           <label class="space-y-2 text-sm"><span>重置后发送的消息</span><textarea v-model="form.pool_reset.message" rows="4" maxlength="2000" class="input" placeholder="输入需要机器人发送的通知内容" /><span class="block text-xs text-gray-500">原样发送，最多 2000 字，支持 @everyone、@here、用户和身份组提醒，需机器人拥有对应权限。</span></label>
         </div>
-        <div class="rounded-lg bg-gray-50 p-4 text-sm leading-6 text-gray-600 dark:bg-dark-900 dark:text-gray-300">每轮结束后等待 15 分钟再查询，同批变化最多观察 1 小时，等待各账号陆续到账。至少 3 个独立 GPT 账号、90% 以上出现相同证据，并在下一轮再次确认才会执行；例如 8 支账号需要全部 8 支确认。首次启用或账号池变化先建立基线。自然到期、单账号用券、数据缺失及过期快照不会触发。重置覆盖有效订阅的日、周、月用量和滚动五小时用量，不延长订阅有效期、不删除使用记录。</div>
+        <div class="rounded-lg bg-gray-50 p-4 text-sm leading-6 text-gray-600 dark:bg-dark-900 dark:text-gray-300">概率预警和未来公告不会触发重置。默认等待 15 分钟传播，同一时段内两家来源的通知只处理一次。重置覆盖有效订阅的日、周、月和滚动五小时用量，保留有效期及使用记录。账号自动使用重置券仍按账号原有设置运行。</div>
         <div v-if="overview?.pool_reset_status" class="space-y-3 rounded-lg border border-gray-200 p-4 text-sm dark:border-dark-700" aria-label="全池重置检测状态">
-          <div class="flex flex-wrap items-center gap-x-6 gap-y-3"><StatusBadge :status="overview.config.pool_reset?.enabled ? 'active' : 'inactive'" :label="overview.config.pool_reset?.enabled ? resetPhase : '未启用'" /><span>本轮有效快照：{{ overview.pool_reset_status.fresh_accounts }} / {{ overview.pool_reset_status.total_accounts }}</span><span>待确认账号：{{ overview.pool_reset_status.pending_accounts }}</span></div>
+          <StatusBadge :status="overview.config.pool_reset?.enabled ? 'active' : 'inactive'" :label="overview.config.pool_reset?.enabled ? resetPhase : '未启用'" />
           <p class="text-gray-500">最近检查：{{ displayTime(overview.pool_reset_status.checked_at) }}</p>
-          <p v-if="overview.pool_reset_status.last_reset_at">上次重置：{{ displayTime(overview.pool_reset_status.last_reset_at) }} · {{ overview.pool_reset_status.last_reset_kind === 'credits' ? '同批新重置券' : '五小时和七天窗口共同重置' }} · {{ overview.pool_reset_status.affected_subscriptions }} 份订阅</p>
+          <p v-if="overview.pool_reset_status.pending_until">预计执行：{{ displayTime(overview.pool_reset_status.pending_until) }}</p>
+          <p v-if="overview.pool_reset_status.cooldown_until">冷却截止：{{ displayTime(overview.pool_reset_status.cooldown_until) }}</p>
+          <p v-if="overview.pool_reset_status.last_error" role="alert" class="text-red-600">{{ overview.pool_reset_status.last_error }}</p>
+          <p v-if="overview.pool_reset_status.last_reset_at">上次重置：{{ displayTime(overview.pool_reset_status.last_reset_at) }} · {{ resetKindLabel(overview.pool_reset_status.last_reset_kind) }} · {{ overview.pool_reset_status.affected_subscriptions }} 份订阅</p>
           <p v-if="overview.pool_reset_status.notification_state">Discord 通知：{{ notificationLabel }}</p>
         </div>
+        <GmailResetSettings v-if="panel === 'reset'" @updated="refreshResetStatus" />
       </div>
+      <div v-show="panel === 'all' || panel === 'onboarding'">
       <div class="mb-5 mt-8"><h3 class="font-semibold">按账号数量分配订阅</h3><p class="mt-2 text-sm leading-6 text-gray-500">把所有有效账号换算成 Plus 等值，每人只匹配一个档位。1～4 个分别对应下表；5 个及以上使用最后一档。未配置的档位不自动分配订阅。</p></div>
       <p v-if="overview?.config.subscription_rules_need_review" class="mb-5 rounded-lg bg-amber-50 p-4 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200" role="alert">旧规则中存在同一数量对应多个不同订阅的情况，相关档位已留空。请按下面的账号数量重新选择并保存。</p>
       <div class="mb-5 rounded-lg bg-gray-50 p-4 text-sm leading-6 text-gray-600 dark:bg-dark-900 dark:text-gray-300">Plus、Business Standard = 1 个等值；Pro 5x、Business Premium = 5 个等值。普通 Business（team）按 Standard 识别；Pro 20x、Pro 50x 也使用 5 个及以上档位。</div>
@@ -59,6 +63,7 @@
         <template #cell-validity="{ row }"><input v-model.number="form.subscription_rules[row.key]!.validity_days" type="number" min="1" max="36500" class="input w-28" :aria-label="`${row.label} 订阅有效期（天）`" /></template>
       </DataTable>
       <p class="mt-5 text-sm leading-6 text-gray-500">例如 2 支 Plus 会获得“2 个 Plus 等值”这一行选择的订阅，不会叠加 1 个等值的订阅。暂停、删除或解绑账号后重新匹配档位；恢复原档位保留订阅原有效期及用量。手动购买的订阅不受影响。</p>
+      </div>
     </section>
     <BaseDialog :show="!!assignment" :title="assignmentKind === 'account' ? '分配 GPT 账号' : '绑定现有 Discord 成员'" width="normal" @close="assignment = null">
       <div class="space-y-5"><p class="rounded-lg bg-gray-50 p-4 text-sm dark:bg-dark-900">目标用户：<strong class="break-all">{{ assignment?.email }}</strong></p>
@@ -80,6 +85,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import ServiceAccountDetails from '@/components/common/ServiceAccountDetails.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
+import GmailResetSettings from '@/components/service/GmailResetSettings.vue'
 import { onboardingAPI } from '@/api/admin/onboarding'
 import type { OnboardingAdminOverview, OnboardingAdminUser, OnboardingDiscordMember } from '@/api/admin/onboardingTypes'
 import type { OnboardingAccountSummary, OnboardingConfig } from '@/api/user'
@@ -87,6 +93,7 @@ import { getAll } from '@/api/admin/groups'
 import { useAppStore } from '@/stores/app'
 import { serviceAccountPlanLabel } from '@/utils/serviceCenter'
 
+withDefaults(defineProps<{ panel?: 'all' | 'accounts' | 'discord' | 'onboarding' | 'reset' }>(), { panel: 'all' })
 const app = useAppStore()
 const tiers = Array.from({ length: 5 }, (_, index) => ({ key: String(index + 1), label: index === 4 ? '5 个及以上 Plus 等值' : `${index + 1} 个 Plus 等值`, example: index === 4 ? '5 支 Plus / 1 支 Pro 5x / 1 支 Business Premium' : `${index + 1} 支 Plus 或 Business Standard` }))
 const tierColumns = [{ key: 'label', label: '有效账号数量' }, { key: 'group', label: '对应订阅' }, { key: 'validity', label: '有效期（天）' }]
@@ -115,7 +122,8 @@ const channels = ref<Array<{ id: string; name: string }>>([])
 const channelsLoading = ref(false)
 const channelError = ref('')
 const channelOptions = computed(() => channels.value.map(channel => ({ value: channel.id, label: `#${channel.name}` })))
-const resetPhase = computed(() => ({ warming_up: '正在建立基线', insufficient_accounts: '独立账号不足 3 个', monitoring: '监测中', incomplete: '有效快照不足，暂不重置', confirming: '等待下一轮确认' })[overview.value?.pool_reset_status?.phase || ''] || '等待首次检查')
+const resetPhase = computed(() => ({ gmail_disconnected: '等待 Gmail 授权', model_not_configured: '等待配置分析模型', monitoring: '监测新邮件', backlog: '处理积压邮件', propagating: '等待重置传播', cooldown: '冷却中', error: '监测失败，等待重试' })[overview.value?.pool_reset_status?.phase || ''] || '等待首次检查')
+const resetKindLabel = (kind?: string) => ({ gmail_direct_reset: '邮件确认直接重置', gmail_banked_reset: '邮件确认重置券发放', credits: '历史重置券事件', windows: '历史窗口重置' })[kind || ''] || '重置事件'
 const notificationLabel = computed(() => ({ sent: '已发送', pending: '等待发送', sending: '已开始发送；若长时间不变，请核对频道', failed: '发送失败，请核对机器人和频道权限', uncertain: '发送结果待核对；为避免重复通知，不自动重发' })[overview.value?.pool_reset_status?.notification_state || ''] || '暂无通知')
 const displayTime = (value?: string) => value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '尚未检查'
 const memberOptions = computed(() => members.value.map(member => ({ value: member.id, label: `${member.display_name} (@${member.username})${member.bound_email ? ` · 已绑定 ${member.bound_email}` : ''}`, disabled: !!member.bound_email && member.bound_email !== assignment.value?.email })))
@@ -131,6 +139,9 @@ async function load() {
     if (form.pool_reset.channel_id) void loadChannels()
     groupOptions.value = [{ value: 0, label: '不自动分配订阅' }, ...groups.filter(group => group.subscription_type === 'subscription' && group.status === 'active').map(group => ({ value: group.id, label: group.name }))]
   } catch (error) { app.showError(errorMessage(error)) } finally { loading.value = false }
+}
+async function refreshResetStatus() {
+  try { const data = await onboardingAPI.getOverview(); if (overview.value) overview.value.pool_reset_status = data.pool_reset_status } catch (error) { app.showError(errorMessage(error)) }
 }
 async function perform(action: () => Promise<unknown>) {
   if (busy.value) return

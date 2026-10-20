@@ -99,7 +99,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		nil, // opencodeGoUsage
 		nil, // auditLog
 		nil, // openAIAutoReset
-		service.NewServicePoolResetService(nil, nil),
+		service.NewServicePoolResetService(nil),
 		nil, // promptAudit
 		nil, // pluginManager
 	)

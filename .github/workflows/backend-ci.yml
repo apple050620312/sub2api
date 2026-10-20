@@ -46,7 +46,7 @@ jobs:
         run: make test-integration
       - name: Dynamic 5h race tests
         working-directory: backend
-        run: go test -race -tags=unit ./internal/service ./internal/repository -run 'TestDynamic5h|TestCalculateDynamic5h|TestNextDynamic5h|TestOnboarding|TestServicePoolReset' -count=1
+        run: go test -race -tags=unit ./internal/service ./internal/repository -run 'TestDynamic5h|TestCalculateDynamic5h|TestNextDynamic5h|TestOnboarding|TestServicePoolReset|TestGmailReset' -count=1
 
   frontend:
     runs-on: ubuntu-latest

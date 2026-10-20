@@ -25,10 +25,10 @@ export interface OnboardingAdminOverview {
   template_accounts?: OnboardingAccountSummary[]
   pool_reset_status?: {
     checked_at?: string
-    total_accounts: number
-    fresh_accounts: number
-    pending_accounts: number
     phase: string
+    last_error?: string
+    pending_until?: string
+    cooldown_until?: string
     last_reset_at?: string
     last_reset_kind?: string
     affected_subscriptions: number

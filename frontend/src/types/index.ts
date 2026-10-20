@@ -2014,6 +2014,17 @@ export interface Dynamic5hUserStatus {
   usage_usd: number
   remaining_usd: number
   pool?: {
+    pressure_status?: Dynamic5hPressureStatus
+    accounts: Array<{
+      name: string
+      platform: string
+      included: boolean
+      reason: string
+      five_hour_used_percent?: number
+      five_hour_reset_at?: string
+      seven_day_used_percent?: number
+      seven_day_reset_at?: string
+    }>
     five_hour_used_percent?: number
     five_hour_sample_count: number
     seven_day_used_percent?: number

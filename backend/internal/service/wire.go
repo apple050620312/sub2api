@@ -221,8 +221,8 @@ func ProvideOpenAIQuotaAutoResetService(
 	return service
 }
 
-func ProvideServicePoolResetService(onboarding *OnboardingService, quota *OpenAIQuotaService) *ServicePoolResetService {
-	svc := NewServicePoolResetService(onboarding, quota)
+func ProvideServicePoolResetService(onboarding *OnboardingService) *ServicePoolResetService {
+	svc := NewServicePoolResetService(onboarding)
 	svc.Start()
 	return svc
 }

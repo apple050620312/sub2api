@@ -33,7 +33,7 @@ func TestDynamic5hPublicPoolDoesNotExposePrivateAccountData(t *testing.T) {
 	svc.accountRepo = &dynamic5hPublicAccountRepository{accounts: []Account{
 		{ID: 1, Name: "公开账号", Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Credentials: map[string]any{"email": "private@example.com", "access_token": "secret-token"}, Extra: map[string]any{"email": "private@example.com", "codex_5h_used_percent": 40, "codex_7d_used_percent": 20, "codex_5h_reset_at": now.Add(2 * time.Hour).Format(time.RFC3339), "codex_7d_reset_at": now.Add(2 * 24 * time.Hour).Format(time.RFC3339), "codex_usage_updated_at": now.Format(time.RFC3339)}},
 		{ID: 2, Name: "第二账号", Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, Extra: map[string]any{"codex_5h_used_percent": 60, "codex_7d_used_percent": 40, "codex_5h_reset_at": now.Add(3 * time.Hour).Format(time.RFC3339), "codex_7d_reset_at": now.Add(3 * 24 * time.Hour).Format(time.RFC3339), "codex_usage_updated_at": now.Format(time.RFC3339)}},
-		{ID: 3, Name: "不支持账号", Platform: "unsupported", Status: StatusActive, Schedulable: true},
+		{ID: 3, Name: "不支持账号 owner@example.com", Platform: "unsupported", Status: StatusActive, Schedulable: true},
 	}}
 	status, err := svc.PublicUserStatus(ctx, 7)
 	require.NoError(t, err)
@@ -47,7 +47,11 @@ func TestDynamic5hPublicPoolDoesNotExposePrivateAccountData(t *testing.T) {
 	for _, private := range []string{"private@example.com", "owner@example.com", "secret-token", "credentials", "extra", "pool_capacity", "audit_logs", "actor_email"} {
 		require.NotContains(t, string(encoded), private)
 	}
-	require.NotContains(t, string(encoded), "公开账号")
+	require.Contains(t, string(encoded), "公开账号")
+	require.Len(t, status.Pool.Accounts, 3)
+	require.Equal(t, "不支持账号 [邮箱已隐藏]", status.Pool.Accounts[2].Name)
+	require.Equal(t, "unsupported_platform", status.Pool.Accounts[2].Reason)
+	require.NotContains(t, string(encoded), "account_id")
 }
 
 func TestDynamic5hPublicPoolReportsAccountReadFailure(t *testing.T) {

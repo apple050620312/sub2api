@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,13 +14,8 @@ import (
 	"github.com/google/uuid"
 )
 
-type servicePoolQuotaReader interface {
-	QueryUsage(context.Context, int64) (*OpenAIQuotaUsage, error)
-}
-
 type ServicePoolResetService struct {
 	onboarding *OnboardingService
-	quota      servicePoolQuotaReader
 	ctx        context.Context
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
@@ -29,9 +23,9 @@ type ServicePoolResetService struct {
 	stop       sync.Once
 }
 
-func NewServicePoolResetService(onboarding *OnboardingService, quota servicePoolQuotaReader) *ServicePoolResetService {
+func NewServicePoolResetService(onboarding *OnboardingService) *ServicePoolResetService {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &ServicePoolResetService{onboarding: onboarding, quota: quota, ctx: ctx, cancel: cancel}
+	return &ServicePoolResetService{onboarding: onboarding, ctx: ctx, cancel: cancel}
 }
 
 func (s *ServicePoolResetService) Start() {
@@ -48,10 +42,10 @@ func (s *ServicePoolResetService) Start() {
 				case <-timer.C:
 					ctx, cancel := context.WithTimeout(s.ctx, 4*time.Minute)
 					if err := s.RunOnce(ctx); err != nil && s.ctx.Err() == nil {
-						slog.Warn("service_pool_reset_scan_failed", "error", err)
+						slog.Warn("gmail_reset_monitor_failed", "error", err)
 					}
 					cancel()
-					timer.Reset(servicePoolResetInterval)
+					timer.Reset(30 * time.Second)
 				}
 			}
 		}()
@@ -63,178 +57,39 @@ func (s *ServicePoolResetService) Stop() {
 }
 
 func (s *ServicePoolResetService) RunOnce(ctx context.Context) error {
-	onboarding := s.onboarding
-	stored, err := onboarding.loadConfig(ctx)
-	if err != nil {
-		return err
-	}
+	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	defer cancel()
 	if err := s.flushResetEffects(ctx); err != nil {
 		return err
 	}
-	if !stored.PoolReset.Enabled {
-		return nil
+	config, err := s.onboarding.loadConfig(ctx)
+	if err != nil || !config.PoolReset.Enabled {
+		return err
 	}
-	leaseRows, err := onboarding.db.QueryContext(ctx, `UPDATE service_pool_reset_state SET lease_until=NOW()+INTERVAL '5 minutes' WHERE id=1 AND lease_until<NOW() RETURNING id`)
+	stored, err := s.onboarding.loadGmailReset(ctx)
 	if err != nil {
 		return err
 	}
-	acquired := leaseRows.Next()
-	leaseErr := leaseRows.Err()
-	_ = leaseRows.Close()
-	if leaseErr != nil {
-		return leaseErr
+	leaseToken := uuid.NewString()
+	leaseRows, err := s.onboarding.db.QueryContext(ctx, `UPDATE service_pool_reset_state SET lease_until=NOW()+INTERVAL '5 minutes',lease_token=$1 WHERE id=1 AND lease_until<NOW() AND next_check_at<=NOW() RETURNING id`, leaseToken)
+	if err != nil {
+		return err
 	}
-	if !acquired {
-		return nil
+	acquired, leaseErr := leaseRows.Next(), leaseRows.Err()
+	_ = leaseRows.Close()
+	if leaseErr != nil || !acquired {
+		return leaseErr
 	}
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, _ = onboarding.db.ExecContext(cleanup, `UPDATE service_pool_reset_state SET lease_until=NOW()+($1 * INTERVAL '1 second') WHERE id=1`, int64(servicePoolResetInterval/time.Second))
+		_, _ = s.onboarding.db.ExecContext(cleanup, `UPDATE service_pool_reset_state SET lease_until='-infinity',lease_token='',next_check_at=CASE WHEN (SELECT version FROM service_pool_reset_gmail WHERE id=1)=$3 THEN NOW()+($1 * INTERVAL '1 minute') ELSE NOW() END WHERE id=1 AND lease_token=$2`, stored.Config.PollMinutes, leaseToken, stored.Version)
 	}()
-	accounts, err := onboarding.listOpenAIAccounts(ctx)
-	if err != nil {
-		return err
-	}
-	_, representatives := servicePoolResetCohort(accounts, time.Now())
-	samples := s.queryPool(ctx, representatives)
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := s.applyRound(ctx, samples, stored.PoolReset, time.Now()); err != nil {
+	if err := s.gmailResetRound(ctx, stored, leaseToken); err != nil {
+		_ = s.gmailResetStatus(ctx, "error", err.Error(), leaseToken)
 		return err
 	}
 	return s.flushResetEffects(ctx)
-}
-
-func servicePoolResetCohort(accounts []Account, now time.Time) ([]string, map[string]int64) {
-	representatives := make(map[string]int64)
-	for _, account := range accounts {
-		if !validOnboardingTemplate(&account) || (account.Status != StatusActive && account.Status != StatusError) || (account.ExpiresAt != nil && account.AutoPauseOnExpired && !account.ExpiresAt.After(now)) || onboardingPlanUnits(account.GetCredential("plan_type")) <= 0 {
-			continue
-		}
-		accountID := strings.TrimSpace(account.GetCredential("chatgpt_account_id"))
-		userID := strings.TrimSpace(account.GetCredential("chatgpt_user_id"))
-		if userID == "" {
-			userID = strings.ToLower(strings.TrimSpace(account.GetCredential("email")))
-		}
-		if accountID == "" || userID == "" {
-			representatives[servicePoolResetHash(fmt.Sprintf("unidentified:%d", account.ID))] = 0
-			continue
-		}
-		identity := servicePoolResetHash(accountID + ":" + userID)
-		if current, exists := representatives[identity]; !exists || account.ID < current {
-			representatives[identity] = account.ID
-		}
-	}
-	cohort := make([]string, 0, len(representatives))
-	for identity := range representatives {
-		cohort = append(cohort, identity)
-	}
-	sort.Strings(cohort)
-	return cohort, representatives
-}
-
-func (s *ServicePoolResetService) queryPool(ctx context.Context, representatives map[string]int64) map[string]servicePoolResetSample {
-	type job struct {
-		identity  string
-		accountID int64
-	}
-	type result struct {
-		identity string
-		sample   servicePoolResetSample
-	}
-	jobs := make(chan job, len(representatives))
-	results := make(chan result, len(representatives))
-	for identity, accountID := range representatives {
-		if accountID > 0 {
-			jobs <- job{identity, accountID}
-		}
-	}
-	close(jobs)
-	var workers sync.WaitGroup
-	for range min(8, len(representatives)) {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
-			for item := range jobs {
-				if ctx.Err() != nil {
-					return
-				}
-				queryCtx, cancel := context.WithTimeout(withOpenAIAutoResetContext(ctx), 20*time.Second)
-				usage, err := s.quota.QueryUsage(queryCtx, item.accountID)
-				cancel()
-				if err == nil {
-					if sample, valid := servicePoolResetSampleFromUsage(usage, time.Now()); valid {
-						results <- result{item.identity, sample}
-					}
-				}
-			}
-		}()
-	}
-	workers.Wait()
-	close(results)
-	samples := make(map[string]servicePoolResetSample)
-	for item := range results {
-		samples[item.identity] = item.sample
-	}
-	return samples
-}
-
-func (s *ServicePoolResetService) applyRound(ctx context.Context, samples map[string]servicePoolResetSample, cfg ServicePoolResetConfig, now time.Time) error {
-	tx, err := s.onboarding.db.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	client := tx.Client()
-	rows, err := client.QueryContext(ctx, `SELECT state FROM service_pool_reset_state WHERE id=1 FOR UPDATE`)
-	if err != nil {
-		return err
-	}
-	var raw []byte
-	if !rows.Next() {
-		_ = rows.Close()
-		return fmt.Errorf("pool reset state missing")
-	}
-	err = rows.Scan(&raw)
-	_ = rows.Close()
-	if err != nil {
-		return err
-	}
-	var state servicePoolResetState
-	if err := json.Unmarshal(raw, &state); err != nil {
-		return err
-	}
-	current, err := s.onboarding.loadConfig(dbent.NewTxContext(ctx, tx))
-	if err != nil {
-		return err
-	}
-	if current.PoolReset != cfg || !current.PoolReset.Enabled {
-		return nil
-	}
-	accounts, err := s.onboarding.listOpenAIAccounts(dbent.NewTxContext(ctx, tx))
-	if err != nil {
-		return err
-	}
-	cohort, _ := servicePoolResetCohort(accounts, now)
-	decision := evaluateServicePoolReset(&state, cohort, samples, now)
-	if decision != nil {
-		if err := s.commitReset(ctx, client, decision, cfg, now); err != nil {
-			return err
-		}
-		state.LastResetAt = now
-		state.Pending = make(map[string]servicePoolResetEvidence)
-		state.Status.PendingAccounts = 0
-	}
-	payload, err := json.Marshal(state)
-	if err != nil {
-		return err
-	}
-	if _, err := client.ExecContext(ctx, `UPDATE service_pool_reset_state SET state=$1::jsonb, updated_at=NOW() WHERE id=1`, payload); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 func (s *ServicePoolResetService) commitReset(ctx context.Context, client *dbent.Client, decision *servicePoolResetDecision, cfg ServicePoolResetConfig, now time.Time) error {
@@ -243,14 +98,10 @@ func (s *ServicePoolResetService) commitReset(ctx context.Context, client *dbent
 	if err != nil {
 		return err
 	}
-	inserted := rows.Next()
-	rowsErr := rows.Err()
+	inserted, rowsErr := rows.Next(), rows.Err()
 	_ = rows.Close()
-	if rowsErr != nil {
+	if rowsErr != nil || !inserted {
 		return rowsErr
-	}
-	if !inserted {
-		return nil
 	}
 	_, err = client.ExecContext(ctx, `WITH reset AS (
 UPDATE user_subscriptions SET daily_usage_usd=0, weekly_usage_usd=0, monthly_usage_usd=0,
@@ -309,9 +160,8 @@ func (s *OnboardingService) poolResetStatus(ctx context.Context) (*ServicePoolRe
 	}
 	var raw []byte
 	if !rows.Next() {
-		rowsErr := rows.Err()
 		_ = rows.Close()
-		return nil, rowsErr
+		return &ServicePoolResetStatus{}, nil
 	}
 	err = rows.Scan(&raw)
 	_ = rows.Close()

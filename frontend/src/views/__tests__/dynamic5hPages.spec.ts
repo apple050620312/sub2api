@@ -37,6 +37,35 @@ const global = {
 }
 
 describe('dedicated Dynamic 5h pages', () => {
+  it('separates pool capacity from personal usage and distinguishes unknown windows', async () => {
+    getUserStatus.mockResolvedValueOnce({
+      enabled: true, quota_available: true, state: 'normal', currently_limited: false,
+      usage_percent: 20, remaining_percent: 80,
+      pool: {
+        five_hour_used_percent: 40, five_hour_sample_count: 2,
+        seven_day_sample_count: 0, stale: false,
+        evaluated_at: '2026-10-20T00:00:00Z',
+        accounts: [
+          { name: '同名账号', platform: 'openai', included: true, reason: 'included', five_hour_used_percent: 0 },
+          { name: '同名账号', platform: 'openai', included: false, reason: 'snapshot_missing' },
+        ],
+      },
+    })
+    const wrapper = mount(UserDynamic5hPressureView, { global, attachTo: document.body })
+    await flushPromises()
+    const poolPanel = wrapper.findAll('[role="tabpanel"]')[1]!
+    expect(poolPanel.isVisible()).toBe(false)
+    await wrapper.findAll('[role="tab"]')[2]!.trigger('click')
+    expect(poolPanel.isVisible()).toBe(true)
+    expect(poolPanel.text()).toContain('60.0%')
+    expect(poolPanel.text()).toContain('0 个样本')
+    expect(poolPanel.text()).toContain('暂无窗口数据')
+    expect(poolPanel.text()).toContain('窗口数据不完整')
+    expect(poolPanel.findAll('tbody tr')).toHaveLength(2)
+    expect(poolPanel.findAll('[role="progressbar"]')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
   it('shows a user’s uncapped usage and zero remaining capacity', async () => {
     getUserStatus.mockResolvedValueOnce({
       enabled: true,
@@ -182,6 +211,10 @@ describe('dedicated Dynamic 5h pages', () => {
 
     expect(wrapper.text()).not.toContain('idle after reset')
     expect(wrapper.text()).not.toContain('admin.pressure5hPage.accountDiagnostics')
+    const tabs = wrapper.findAll('[role="tab"]')
+    expect(tabs.map(button => button.text())).toEqual(['dynamic5h.title', '用户与账号', 'Discord', '引导与订阅', '重置监测'])
+    await tabs[4]!.trigger('click')
+    expect(wrapper.find('onboarding-view-stub').attributes('panel')).toBe('reset')
     wrapper.unmount()
   })
 })
