@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	dbmigrations "github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -94,10 +95,8 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 	require.NoError(t, err)
 	t.Cleanup(func() { _, _ = integrationDB.ExecContext(ctx, `DELETE FROM api_keys WHERE id=$1`, apiKey.ID) })
 	monitorConfig, err := json.Marshal(service.ResetMonitorConfig{
-		ChannelID: "1561630415750561863", BotsOnly: true, RequireEmbeds: true, PollSeconds: 5, PropagationMinutes: 15,
-		AggregationMinutes: 120, CooldownMinutes: 360, MaxAgeHours: 24, BatchSize: 20, MaxModelAttempts: 3, RetentionDays: 30,
-		DirectResetEnabled: true, BankedResetEnabled: true, MinConfidence: 0.95, ModelAPIKeyID: apiKey.ID,
-		Model: "test-model", APIFormat: "responses", Prompt: "Classify reset notices.", ModelTimeoutSeconds: 60, MaxOutputTokens: 2048, MaxBodyChars: 24000,
+		ChannelID: "1561630415750561863", PollSeconds: 300, PropagationMinutes: 30, CooldownMinutes: 720,
+		BankedResetEnabled: true, ModelAPIKeyID: apiKey.ID, Model: "test-model", APIFormat: "responses",
 	})
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_monitor SET config=$1::jsonb,owner_user_id=$2,monitor_since=$3,version=version+1 WHERE id=1`, monitorConfig, user.ID, transport.received.Add(-time.Hour))
@@ -154,4 +153,44 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 	var state string
 	require.NoError(t, integrationDB.QueryRowContext(ctx, `SELECT notification_state FROM service_pool_reset_events WHERE notification_content='integration-reset'`).Scan(&state))
 	require.Equal(t, "failed", state, "a denied test notification must remain failed without repeating the reset")
+}
+
+func TestResetMonitorConfigMigrationPreservesOwnershipAndTiming(t *testing.T) {
+	ctx := context.Background()
+	migration, err := dbmigrations.FS.ReadFile("250_simplify_reset_monitor.sql")
+	require.NoError(t, err)
+	for _, scenario := range []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{"old_defaults", `{"channel_id":"12345","author_ids":["1001"],"poll_seconds":5,"propagation_minutes":15,"cooldown_minutes":360,"banked_reset_enabled":false,"model_api_key_id":42,"model":"custom-model","api_format":"chat_completions","prompt":"Custom rule","bots_only":true,"require_embeds":true,"aggregation_minutes":120,"max_age_hours":24,"batch_size":20,"max_model_attempts":3,"retention_days":30,"direct_reset_enabled":true,"min_confidence":0.95,"model_timeout_seconds":60,"max_output_tokens":2048,"max_body_chars":24000}`,
+			`{"channel_id":"12345","author_ids":["1001"],"poll_seconds":300,"propagation_minutes":30,"cooldown_minutes":720,"banked_reset_enabled":false,"model_api_key_id":42,"model":"custom-model","api_format":"chat_completions","prompt":"Custom rule"}`},
+		{"custom_timing", `{"poll_seconds":900,"propagation_minutes":45,"cooldown_minutes":4320}`, `{"poll_seconds":900,"propagation_minutes":45,"cooldown_minutes":4320}`},
+		{"short_timing", `{"poll_seconds":10,"propagation_minutes":0,"cooldown_minutes":60}`, `{"poll_seconds":60,"propagation_minutes":0,"cooldown_minutes":120}`},
+		{"unconfigured", `{}`, `{}`},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			tx, err := integrationDB.BeginTx(ctx, nil)
+			require.NoError(t, err)
+			defer func() { _ = tx.Rollback() }()
+			_, err = tx.ExecContext(ctx, `CREATE TEMP TABLE service_pool_reset_monitor (LIKE public.service_pool_reset_monitor INCLUDING DEFAULTS) ON COMMIT DROP`)
+			require.NoError(t, err)
+			since := time.Now().UTC().Truncate(time.Second)
+			_, err = tx.ExecContext(ctx, `INSERT INTO service_pool_reset_monitor (id,config,owner_user_id,monitor_since,version) VALUES (1,$1::jsonb,42,$2,7)`, scenario.before, since)
+			require.NoError(t, err)
+			for range 2 {
+				_, err = tx.ExecContext(ctx, string(migration))
+				require.NoError(t, err)
+				var config string
+				var owner, version int64
+				var monitorSince time.Time
+				require.NoError(t, tx.QueryRowContext(ctx, `SELECT config,owner_user_id,monitor_since,version FROM service_pool_reset_monitor WHERE id=1`).Scan(&config, &owner, &monitorSince, &version))
+				require.JSONEq(t, scenario.after, config)
+				require.Equal(t, int64(42), owner)
+				require.Equal(t, int64(7), version)
+				require.True(t, since.Equal(monitorSince))
+			}
+		})
+	}
 }

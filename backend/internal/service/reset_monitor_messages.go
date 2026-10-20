@@ -118,7 +118,7 @@ func resetMonitorMessages(ctx context.Context, client *http.Client, token, guild
 	if channel.GuildID == "" || channel.GuildID != guild {
 		return nil, fmt.Errorf("监测频道不属于配置的 Discord 服务器")
 	}
-	since := now.Add(-time.Duration(stored.Config.MaxAgeHours) * time.Hour)
+	since := now.Add(-resetMonitorMaxMessageAge)
 	if stored.Since.After(since) {
 		since = stored.Since
 	}
@@ -151,14 +151,14 @@ func resetMonitorMessages(ctx context.Context, client *http.Client, token, guild
 		}
 		before = last.ID
 	}
-	return nil, fmt.Errorf("监测时段内的频道消息超过 1000 条，请缩短消息时效或使用专用通知频道")
+	return nil, fmt.Errorf("最近 24 小时的频道消息超过 1000 条，请使用专用通知频道")
 }
 
 func resetMonitorRecord(message resetMonitorMessage, cfg ResetMonitorConfig) (resetMonitorMessageRecord, bool) {
-	if cfg.RequireEmbeds && len(message.Embeds) == 0 {
+	if len(message.Embeds) == 0 {
 		return resetMonitorMessageRecord{}, false
 	}
-	if cfg.BotsOnly && !message.Author.Bot && message.WebhookID == "" {
+	if !message.Author.Bot && message.WebhookID == "" {
 		return resetMonitorMessageRecord{}, false
 	}
 	if len(cfg.AuthorIDs) > 0 {
@@ -193,7 +193,7 @@ func resetMonitorRecord(message resetMonitorMessage, cfg ResetMonitorConfig) (re
 	if message.EditedTimestamp != nil && message.EditedTimestamp.After(received) {
 		received = *message.EditedTimestamp
 	}
-	return resetMonitorMessageRecord{MessageID: message.ID, ReceivedAt: received, Sender: message.Author.ID, Subject: resetMonitorTruncate(title, 500), Kind: "unknown", Outcome: "untrusted_source", Body: resetMonitorTruncate(body, cfg.MaxBodyChars), Key: servicePoolResetHash(message.ChannelID + ":" + message.ID + ":" + body)}, true
+	return resetMonitorMessageRecord{MessageID: message.ID, ReceivedAt: received, Sender: message.Author.ID, Subject: resetMonitorTruncate(title, 500), Kind: "unknown", Outcome: "untrusted_source", Body: resetMonitorTruncate(body, resetMonitorMaxBodyChars), Key: servicePoolResetHash(message.ChannelID + ":" + message.ID + ":" + body)}, true
 }
 
 func resetMonitorTruncate(value string, limit int) string {
@@ -213,7 +213,7 @@ func (s *ServicePoolResetService) analyzeResetMessage(ctx context.Context, store
 	if s.onboarding.cfg != nil && s.onboarding.cfg.Server.Port > 0 {
 		port = s.onboarding.cfg.Server.Port
 	}
-	return resetMonitorAnalyze(ctx, resetMonitorHTTPClient(time.Duration(stored.Config.ModelTimeoutSeconds)*time.Second, true), stored.Config, "http://127.0.0.1:"+strconv.Itoa(port)+"/v1", key.Key, record)
+	return resetMonitorAnalyze(ctx, resetMonitorHTTPClient(resetMonitorModelTimeout, true), stored.Config, "http://127.0.0.1:"+strconv.Itoa(port)+"/v1", key.Key, record)
 }
 
 func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMonitorConfig, baseURL, key string, record resetMonitorMessageRecord) (*resetMonitorAnalysis, error) {
@@ -221,17 +221,20 @@ func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMoni
 	if err != nil {
 		return nil, err
 	}
-	prompt := defaultResetMonitorPrompt + "\n管理员补充规则：\n" + cfg.Prompt
+	prompt := defaultResetMonitorPrompt
+	if strings.TrimSpace(cfg.Prompt) != "" {
+		prompt += "\n管理员补充规则：\n" + cfg.Prompt
+	}
 	payload := map[string]any{"model": cfg.Model, "stream": false}
 	endpoint := strings.TrimRight(baseURL, "/")
 	if cfg.APIFormat == "responses" {
 		endpoint += "/responses"
-		payload["instructions"], payload["input"], payload["max_output_tokens"], payload["store"] = prompt, string(data), cfg.MaxOutputTokens, false
+		payload["instructions"], payload["input"], payload["max_output_tokens"], payload["store"] = prompt, string(data), resetMonitorMaxOutputTokens, false
 		payload["text"] = map[string]any{"format": map[string]string{"type": "json_object"}}
 	} else {
 		endpoint += "/chat/completions"
 		payload["messages"] = []map[string]string{{"role": "system", "content": prompt}, {"role": "user", "content": string(data)}}
-		payload["max_completion_tokens"] = cfg.MaxOutputTokens
+		payload["max_completion_tokens"] = resetMonitorMaxOutputTokens
 		payload["response_format"] = map[string]string{"type": "json_object"}
 	}
 	raw, err := json.Marshal(payload)
@@ -273,7 +276,7 @@ func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMoni
 	var output strings.Builder
 	if cfg.APIFormat == "responses" {
 		if result.Status != "completed" {
-			return nil, fmt.Errorf("模型未完成输出，请检查输出长度和超时设置")
+			return nil, fmt.Errorf("模型未完成输出，请检查模型可用性或稍后重试")
 		}
 		for _, item := range result.Output {
 			for _, content := range item.Content {

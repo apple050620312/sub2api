@@ -3,26 +3,14 @@ import { apiClient } from '../client'
 export interface ResetMonitorConfig {
   channel_id: string
   author_ids: string[]
-  bots_only: boolean
-  require_embeds: boolean
   poll_seconds: number
   propagation_minutes: number
-  aggregation_minutes: number
   cooldown_minutes: number
-  max_age_hours: number
-  batch_size: number
-  max_model_attempts: number
-  retention_days: number
-  direct_reset_enabled: boolean
   banked_reset_enabled: boolean
-  min_confidence: number
   model_api_key_id: number
   model: string
   api_format: 'chat_completions' | 'responses'
   prompt: string
-  model_timeout_seconds: number
-  max_output_tokens: number
-  max_body_chars: number
 }
 
 export interface ResetMonitorOverview {

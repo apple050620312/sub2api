@@ -27,16 +27,16 @@ type resetMonitorState struct {
 }
 
 func acceptResetMessage(state *servicePoolResetState, record *resetMonitorMessageRecord, cfg ResetMonitorConfig, now time.Time) {
-	if !(record.Confidence >= cfg.MinConfidence) || (record.Kind != "direct_reset" && record.Kind != "banked_reset") {
+	if !(record.Confidence >= resetMonitorMinConfidence) || (record.Kind != "direct_reset" && record.Kind != "banked_reset") {
 		record.Outcome = "ignored"
 		return
 	}
-	if (record.Kind == "direct_reset" && !cfg.DirectResetEnabled) || (record.Kind == "banked_reset" && !cfg.BankedResetEnabled) {
+	if record.Kind == "banked_reset" && !cfg.BankedResetEnabled {
 		record.Outcome = "kind_disabled"
 		return
 	}
 	monitor := &state.Monitor
-	aggregation := time.Duration(cfg.AggregationMinutes) * time.Minute
+	aggregation := resetMonitorAggregationWindow
 	if !monitor.LastEventReceived.IsZero() && !record.ReceivedAt.After(monitor.LastEventReceived.Add(aggregation)) {
 		record.Outcome = "merged"
 		return
@@ -66,7 +66,7 @@ func readyResetMonitor(state *servicePoolResetState, cfg ResetMonitorConfig, now
 	if pending == nil {
 		return nil
 	}
-	if now.Sub(pending.ReceivedAt) > time.Duration(cfg.MaxAgeHours)*time.Hour || (pending.Kind == "direct_reset" && !cfg.DirectResetEnabled) || (pending.Kind == "banked_reset" && !cfg.BankedResetEnabled) {
+	if now.Sub(pending.ReceivedAt) > resetMonitorMaxMessageAge || (pending.Kind == "banked_reset" && !cfg.BankedResetEnabled) {
 		monitor.Pending = nil
 		return nil
 	}
@@ -110,22 +110,22 @@ func (s *ServicePoolResetService) resetMonitorRound(ctx context.Context, stored 
 			continue
 		}
 		deadline, hasDeadline := ctx.Deadline()
-		if len(records) >= stored.Config.BatchSize || (hasDeadline && time.Until(deadline) < time.Duration(stored.Config.ModelTimeoutSeconds+15)*time.Second) {
+		if len(records) >= resetMonitorBatchSize || (hasDeadline && time.Until(deadline) < resetMonitorModelTimeout+15*time.Second) {
 			backlog = true
 			break
 		}
 		now := time.Now()
-		if !record.ReceivedAt.After(stored.Since) || now.Sub(record.ReceivedAt) > time.Duration(stored.Config.MaxAgeHours)*time.Hour || record.ReceivedAt.After(now.Add(5*time.Minute)) {
+		if !record.ReceivedAt.After(stored.Since) || now.Sub(record.ReceivedAt) > resetMonitorMaxMessageAge || record.ReceivedAt.After(now.Add(5*time.Minute)) {
 			record.Outcome = "stale"
 		} else {
 			record.Attempts = attempts + 1
-			analysisCtx, cancel := context.WithTimeout(ctx, time.Duration(stored.Config.ModelTimeoutSeconds)*time.Second)
+			analysisCtx, cancel := context.WithTimeout(ctx, resetMonitorModelTimeout)
 			analysis, err := s.analyzeResetMessage(analysisCtx, stored, record)
 			cancel()
 			if err != nil {
 				processingError = err
 				record.Outcome = "analysis_failed"
-				if record.Attempts < stored.Config.MaxModelAttempts {
+				if record.Attempts < resetMonitorMaxModelAttempts {
 					record.Outcome, backlog = "analysis_retry", true
 				}
 			} else {
@@ -267,7 +267,7 @@ func (s *ServicePoolResetService) applyResetMonitorRound(ctx context.Context, st
 	if _, err := client.ExecContext(ctx, `UPDATE service_pool_reset_state SET state=$1::jsonb,updated_at=NOW() WHERE id=1`, payload); err != nil {
 		return err
 	}
-	if _, err := client.ExecContext(ctx, `DELETE FROM service_pool_reset_messages WHERE created_at<NOW()-($1 * INTERVAL '1 day')`, stored.Config.RetentionDays); err != nil {
+	if _, err := client.ExecContext(ctx, `DELETE FROM service_pool_reset_messages WHERE created_at<NOW()-($1 * INTERVAL '1 day')`, resetMonitorRetentionDays); err != nil {
 		return err
 	}
 	return tx.Commit()

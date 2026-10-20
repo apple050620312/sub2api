@@ -46,7 +46,7 @@ func (s *ServicePoolResetService) Start() {
 						slog.Warn("discord_reset_monitor_failed", "error", err)
 					}
 					cancel()
-					timer.Reset(5 * time.Second)
+					timer.Reset(30 * time.Second)
 				}
 			}
 		}()

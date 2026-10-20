@@ -18,40 +18,39 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestResetMonitorConfirmedMailCoalescesAcrossSourcesAndRestarts(t *testing.T) {
+func TestResetMonitorConfirmedMessagesCoalesceAcrossSourcesAndRestarts(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	cfg := defaultResetMonitorConfig()
 	state := servicePoolResetState{}
 	first := resetMonitorMessageRecord{Key: "first", Kind: "direct_reset", Confidence: 0.99, ReceivedAt: now, Sender: "1001"}
 	acceptResetMessage(&state, &first, cfg, now)
 	require.Equal(t, "pending", first.Outcome)
-	require.Nil(t, readyResetMonitor(&state, cfg, now.Add(14*time.Minute), false))
-	second := resetMonitorMessageRecord{Key: "second", Kind: "direct_reset", Confidence: 0.98, ReceivedAt: now.Add(10 * time.Minute), Sender: "1002"}
-	acceptResetMessage(&state, &second, cfg, now.Add(10*time.Minute))
+	require.Nil(t, readyResetMonitor(&state, cfg, now.Add(29*time.Minute), false))
+	second := resetMonitorMessageRecord{Key: "second", Kind: "direct_reset", Confidence: 0.98, ReceivedAt: now.Add(29 * time.Minute), Sender: "1002"}
+	acceptResetMessage(&state, &second, cfg, now.Add(29*time.Minute))
 	require.Equal(t, "merged", second.Outcome)
-	require.Nil(t, readyResetMonitor(&state, cfg, now.Add(16*time.Minute), true))
+	require.Nil(t, readyResetMonitor(&state, cfg, now.Add(30*time.Minute), true))
 	raw, err := json.Marshal(state)
 	require.NoError(t, err)
 	var restarted servicePoolResetState
 	require.NoError(t, json.Unmarshal(raw, &restarted))
-	decision := readyResetMonitor(&restarted, cfg, now.Add(16*time.Minute), false)
+	decision := readyResetMonitor(&restarted, cfg, now.Add(30*time.Minute), false)
 	require.NotNil(t, decision)
 	require.Equal(t, "discord:first", decision.Key)
 	require.Equal(t, 2, decision.Observed)
 	restarted.Monitor.LastEventReceived = now
-	restarted.Monitor.CooldownUntil = now.Add(6 * time.Hour)
+	restarted.Monitor.CooldownUntil = now.Add(30*time.Minute + time.Duration(cfg.CooldownMinutes)*time.Minute)
 	restarted.Monitor.Pending = nil
 	late := resetMonitorMessageRecord{Key: "late", Kind: "direct_reset", Confidence: 1, ReceivedAt: now.Add(29 * time.Minute)}
-	acceptResetMessage(&restarted, &late, cfg, now.Add(7*time.Hour))
+	acceptResetMessage(&restarted, &late, cfg, now.Add(13*time.Hour))
 	require.Equal(t, "merged", late.Outcome)
-	late.ReceivedAt = now.Add(3 * time.Hour)
-	acceptResetMessage(&restarted, &late, cfg, now.Add(3*time.Hour))
+	late.ReceivedAt = now.Add(10 * time.Hour)
+	acceptResetMessage(&restarted, &late, cfg, now.Add(10*time.Hour))
 	require.Equal(t, "cooldown", late.Outcome)
-	late.ReceivedAt = now.Add(3 * time.Hour)
-	acceptResetMessage(&restarted, &late, cfg, now.Add(7*time.Hour))
+	acceptResetMessage(&restarted, &late, cfg, now.Add(13*time.Hour))
 	require.Equal(t, "cooldown", late.Outcome)
-	late.ReceivedAt = now.Add(7 * time.Hour)
-	acceptResetMessage(&restarted, &late, cfg, now.Add(7*time.Hour))
+	late.ReceivedAt = now.Add(24 * time.Hour)
+	acceptResetMessage(&restarted, &late, cfg, now.Add(24*time.Hour))
 	require.Equal(t, "pending", late.Outcome)
 }
 
@@ -175,14 +174,33 @@ func TestResetMonitorSeparatePendingCampaignReplacesOlderBacklog(t *testing.T) {
 	require.Equal(t, "new", state.Monitor.Pending.Key)
 }
 
-func TestResetMonitorConfigRejectsUnsafeRetryAndRetentionRanges(t *testing.T) {
+func TestResetMonitorConfigValidatesTimingAndAllowsEmptySupplement(t *testing.T) {
 	cfg := defaultResetMonitorConfig()
 	require.NoError(t, validateResetMonitorConfig(cfg))
-	cfg.MaxModelAttempts = 0
-	require.Error(t, validateResetMonitorConfig(cfg))
-	cfg.MaxModelAttempts = 3
-	cfg.RetentionDays = 6
-	require.Error(t, validateResetMonitorConfig(cfg))
+	require.Empty(t, cfg.Prompt)
+	require.Equal(t, 300, cfg.PollSeconds)
+	require.Equal(t, 30, cfg.PropagationMinutes)
+	require.Equal(t, 720, cfg.CooldownMinutes)
+	for _, scenario := range []struct {
+		name   string
+		change func(*ResetMonitorConfig)
+	}{
+		{"frequent_poll", func(cfg *ResetMonitorConfig) { cfg.PollSeconds = 59 }},
+		{"slow_poll", func(cfg *ResetMonitorConfig) { cfg.PollSeconds = 3601 }},
+		{"negative_propagation", func(cfg *ResetMonitorConfig) { cfg.PropagationMinutes = -1 }},
+		{"long_propagation", func(cfg *ResetMonitorConfig) { cfg.PropagationMinutes = 1441 }},
+		{"short_cooldown", func(cfg *ResetMonitorConfig) { cfg.CooldownMinutes = 119 }},
+		{"cooldown_before_propagation", func(cfg *ResetMonitorConfig) { cfg.PropagationMinutes = 721 }},
+		{"long_cooldown", func(cfg *ResetMonitorConfig) { cfg.CooldownMinutes = 10081 }},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			candidate := cfg
+			scenario.change(&candidate)
+			require.Error(t, validateResetMonitorConfig(candidate))
+		})
+	}
+	cfg.CooldownMinutes = 4320
+	require.NoError(t, validateResetMonitorConfig(cfg))
 }
 
 func TestResetMonitorExtractsEmbedFieldsAndRechecksChangedContent(t *testing.T) {
@@ -207,9 +225,8 @@ func TestResetMonitorExtractsEmbedFieldsAndRechecksChangedContent(t *testing.T) 
 
 func TestResetMonitorRestrictsMessageAuthors(t *testing.T) {
 	cfg := defaultResetMonitorConfig()
-	cfg.RequireEmbeds = false
-	message := resetMonitorMessage{Content: "The limits have been reset."}
-	message.Author.ID = "1001"
+	var message resetMonitorMessage
+	require.NoError(t, json.Unmarshal([]byte(`{"author":{"id":"1001"},"embeds":[{"description":"The limits have been reset."}]}`), &message))
 	_, allowed := resetMonitorRecord(message, cfg)
 	require.False(t, allowed)
 	message.Author.Bot = true
