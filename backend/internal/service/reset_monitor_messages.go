@@ -213,10 +213,10 @@ func (s *ServicePoolResetService) analyzeResetMessage(ctx context.Context, store
 	if s.onboarding.cfg != nil && s.onboarding.cfg.Server.Port > 0 {
 		port = s.onboarding.cfg.Server.Port
 	}
-	return resetMonitorAnalyze(ctx, resetMonitorHTTPClient(resetMonitorModelTimeout, true), stored.Config, "http://127.0.0.1:"+strconv.Itoa(port)+"/v1", key.Key, record)
+	return resetMonitorAnalyze(ctx, resetMonitorHTTPClient(resetMonitorModelTimeout, true), stored.Config, port, key.Key, record)
 }
 
-func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMonitorConfig, baseURL, key string, record resetMonitorMessageRecord) (*resetMonitorAnalysis, error) {
+func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMonitorConfig, port int, key string, record resetMonitorMessageRecord) (*resetMonitorAnalysis, error) {
 	data, err := json.Marshal(map[string]string{"author_id": record.Sender, "received_at": record.ReceivedAt.UTC().Format(time.RFC3339), "title": record.Subject, "body": record.Body})
 	if err != nil {
 		return nil, err
@@ -225,22 +225,16 @@ func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMoni
 	if strings.TrimSpace(cfg.Prompt) != "" {
 		prompt += "\n管理员补充规则：\n" + cfg.Prompt
 	}
-	payload := map[string]any{"model": cfg.Model, "stream": false}
-	endpoint := strings.TrimRight(baseURL, "/")
-	if cfg.APIFormat == "responses" {
-		endpoint += "/responses"
-		payload["instructions"], payload["input"], payload["max_output_tokens"], payload["store"] = prompt, string(data), resetMonitorMaxOutputTokens, false
-		payload["text"] = map[string]any{"format": map[string]string{"type": "json_object"}}
-	} else {
-		endpoint += "/chat/completions"
-		payload["messages"] = []map[string]string{{"role": "system", "content": prompt}, {"role": "user", "content": string(data)}}
-		payload["max_completion_tokens"] = resetMonitorMaxOutputTokens
-		payload["response_format"] = map[string]string{"type": "json_object"}
+	payload := map[string]any{
+		"model": cfg.Model, "stream": false, "store": false, "instructions": prompt,
+		"input": string(data), "max_output_tokens": resetMonitorMaxOutputTokens,
+		"text": map[string]any{"format": map[string]string{"type": "json_object"}},
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
+	endpoint := "http://127.0.0.1:" + strconv.Itoa(port) + "/v1/responses"
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
 	if err != nil {
 		return nil, err
@@ -256,13 +250,7 @@ func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMoni
 		return nil, fmt.Errorf("站内号池模型返回 HTTP %d，请检查 Key 额度、分组及模型", response.StatusCode)
 	}
 	var result struct {
-		Status  string `json:"status"`
-		Choices []struct {
-			FinishReason string `json:"finish_reason"`
-			Message      struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
+		Status string `json:"status"`
 		Output []struct {
 			Content []struct {
 				Type string `json:"type"`
@@ -274,19 +262,15 @@ func resetMonitorAnalyze(ctx context.Context, client *http.Client, cfg ResetMoni
 		return nil, fmt.Errorf("站内号池模型响应格式无效")
 	}
 	var output strings.Builder
-	if cfg.APIFormat == "responses" {
-		if result.Status != "completed" {
-			return nil, fmt.Errorf("模型未完成输出，请检查模型可用性或稍后重试")
-		}
-		for _, item := range result.Output {
-			for _, content := range item.Content {
-				if content.Type == "output_text" {
-					_, _ = output.WriteString(content.Text)
-				}
+	if result.Status != "completed" {
+		return nil, fmt.Errorf("模型未完成输出，请检查模型可用性或稍后重试")
+	}
+	for _, item := range result.Output {
+		for _, content := range item.Content {
+			if content.Type == "output_text" {
+				_, _ = output.WriteString(content.Text)
 			}
 		}
-	} else if len(result.Choices) == 1 && result.Choices[0].FinishReason == "stop" {
-		_, _ = output.WriteString(result.Choices[0].Message.Content)
 	}
 	return parseResetMonitorAnalysis(output.String(), record)
 }

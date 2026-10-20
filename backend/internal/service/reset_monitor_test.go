@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -21,6 +22,7 @@ import (
 func TestResetMonitorConfirmedMessagesCoalesceAcrossSourcesAndRestarts(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	cfg := defaultResetMonitorConfig()
+	cfg.PropagationMinutes = 30
 	state := servicePoolResetState{}
 	first := resetMonitorMessageRecord{Key: "first", Kind: "direct_reset", Confidence: 0.99, ReceivedAt: now, Sender: "1001"}
 	acceptResetMessage(&state, &first, cfg, now)
@@ -52,6 +54,24 @@ func TestResetMonitorConfirmedMessagesCoalesceAcrossSourcesAndRestarts(t *testin
 	late.ReceivedAt = now.Add(24 * time.Hour)
 	acceptResetMessage(&restarted, &late, cfg, now.Add(24*time.Hour))
 	require.Equal(t, "pending", late.Outcome)
+}
+
+func TestResetMonitorSingleSourceAppliesImmediatelyAndLaterSourceDoesNotRepeat(t *testing.T) {
+	now := time.Now().UTC()
+	cfg := defaultResetMonitorConfig()
+	state := servicePoolResetState{}
+	first := resetMonitorMessageRecord{Key: "first", Kind: "direct_reset", Confidence: 0.99, ReceivedAt: now, Sender: "1001"}
+	acceptResetMessage(&state, &first, cfg, now)
+	decision := readyResetMonitor(&state, cfg, now, false)
+	require.NotNil(t, decision)
+	require.Equal(t, 1, decision.Observed)
+	state.Monitor.LastEventReceived = first.ReceivedAt
+	state.Monitor.CooldownUntil = now.Add(time.Duration(cfg.CooldownMinutes) * time.Minute)
+	state.Monitor.Pending = nil
+	second := resetMonitorMessageRecord{Key: "second", Kind: "direct_reset", Confidence: 0.99, ReceivedAt: now.Add(29 * time.Minute), Sender: "1002"}
+	acceptResetMessage(&state, &second, cfg, second.ReceivedAt)
+	require.Equal(t, "merged", second.Outcome)
+	require.Nil(t, readyResetMonitor(&state, cfg, second.ReceivedAt, false))
 }
 
 func TestResetMonitorDoesNotAcceptForecastOrLowConfidence(t *testing.T) {
@@ -98,30 +118,23 @@ func TestResetMonitorModelMustQuoteEvidenceAndReturnCompleteJSON(t *testing.T) {
 	}
 }
 
-func TestResetMonitorModelProtocols(t *testing.T) {
-	for _, format := range []string{"chat_completions", "responses"} {
-		t.Run(format, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-				require.Equal(t, "Bearer model-secret", request.Header.Get("Authorization"))
-				var payload map[string]any
-				require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
-				require.Equal(t, "test-model", payload["model"])
-				if format == "responses" {
-					require.Equal(t, "/v1/responses", request.URL.Path)
-					_, _ = io.WriteString(writer, `{"status":"completed","output":[{"content":[{"type":"output_text","text":"{\"kind\":\"forecast\",\"confidence\":0.99,\"evidence\":\"99% probability alert\"}"}]}]}`)
-				} else {
-					require.Equal(t, "/v1/chat/completions", request.URL.Path)
-					_, _ = io.WriteString(writer, `{"choices":[{"finish_reason":"stop","message":{"content":"{\"kind\":\"forecast\",\"confidence\":0.99,\"evidence\":\"99% probability alert\"}"}}]}`)
-				}
-			}))
-			defer server.Close()
-			cfg := defaultResetMonitorConfig()
-			cfg.Model, cfg.APIFormat = "test-model", format
-			analysis, err := resetMonitorAnalyze(context.Background(), server.Client(), cfg, server.URL+"/v1", "model-secret", resetMonitorMessageRecord{Body: "99% probability alert"})
-			require.NoError(t, err)
-			require.Equal(t, "forecast", analysis.Kind)
-		})
-	}
+func TestResetMonitorModelUsesInternalResponses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		require.Equal(t, "Bearer model-secret", request.Header.Get("Authorization"))
+		require.Equal(t, "/v1/responses", request.URL.Path)
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&payload))
+		require.Equal(t, "test-model", payload["model"])
+		_, _ = io.WriteString(writer, `{"status":"completed","output":[{"content":[{"type":"output_text","text":"{\"kind\":\"forecast\",\"confidence\":0.99,\"evidence\":\"99% probability alert\"}"}]}]}`)
+	}))
+	defer server.Close()
+	address, ok := server.Listener.Addr().(*net.TCPAddr)
+	require.True(t, ok)
+	cfg := defaultResetMonitorConfig()
+	cfg.Model = "test-model"
+	analysis, err := resetMonitorAnalyze(context.Background(), server.Client(), cfg, address.Port, "model-secret", resetMonitorMessageRecord{Body: "99% probability alert"})
+	require.NoError(t, err)
+	require.Equal(t, "forecast", analysis.Kind)
 }
 
 func TestResetMonitorDuplicateMessageIsPersistentlyRecognized(t *testing.T) {
@@ -179,7 +192,7 @@ func TestResetMonitorConfigValidatesTimingAndAllowsEmptySupplement(t *testing.T)
 	require.NoError(t, validateResetMonitorConfig(cfg))
 	require.Empty(t, cfg.Prompt)
 	require.Equal(t, 300, cfg.PollSeconds)
-	require.Equal(t, 30, cfg.PropagationMinutes)
+	require.Zero(t, cfg.PropagationMinutes)
 	require.Equal(t, 720, cfg.CooldownMinutes)
 	for _, scenario := range []struct {
 		name   string

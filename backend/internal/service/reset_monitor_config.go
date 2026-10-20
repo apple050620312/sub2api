@@ -40,7 +40,6 @@ type ResetMonitorConfig struct {
 	BankedResetEnabled bool     `json:"banked_reset_enabled"`
 	ModelAPIKeyID      int64    `json:"model_api_key_id"`
 	Model              string   `json:"model"`
-	APIFormat          string   `json:"api_format"`
 	Prompt             string   `json:"prompt"`
 }
 
@@ -59,8 +58,8 @@ type resetMonitorStored struct {
 
 func defaultResetMonitorConfig() ResetMonitorConfig {
 	return ResetMonitorConfig{ChannelID: "1561630415750561863", AuthorIDs: []string{},
-		PollSeconds: 300, PropagationMinutes: 30, CooldownMinutes: 720, BankedResetEnabled: true,
-		Model: openai.DefaultTestModel, APIFormat: "responses"}
+		PollSeconds: 300, PropagationMinutes: 0, CooldownMinutes: 720, BankedResetEnabled: true,
+		Model: openai.DefaultTestModel}
 }
 
 func resetMonitorSnowflake(value string) bool {
@@ -81,9 +80,6 @@ func validateResetMonitorConfig(cfg ResetMonitorConfig) error {
 		}
 	}
 	if cfg.PollSeconds < 60 || cfg.PollSeconds > 3600 || cfg.PropagationMinutes < 0 || cfg.PropagationMinutes > 1440 || cfg.CooldownMinutes < int(resetMonitorAggregationWindow/time.Minute) || cfg.CooldownMinutes < cfg.PropagationMinutes || cfg.CooldownMinutes > 10080 {
-		return invalid()
-	}
-	if cfg.APIFormat != "chat_completions" && cfg.APIFormat != "responses" {
 		return invalid()
 	}
 	return nil

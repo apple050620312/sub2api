@@ -9,7 +9,6 @@ export interface ResetMonitorConfig {
   banked_reset_enabled: boolean
   model_api_key_id: number
   model: string
-  api_format: 'chat_completions' | 'responses'
   prompt: string
 }
 

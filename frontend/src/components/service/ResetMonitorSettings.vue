@@ -18,12 +18,11 @@
       <div class="flex flex-wrap gap-5 text-sm">
         <label class="flex items-center gap-2"><input v-model="form.banked_reset_enabled" type="checkbox" />处理已确认的重置券发放</label>
       </div>
-      <details><summary class="cursor-pointer text-sm font-medium">高级设置</summary><div class="mt-4 grid gap-5 md:grid-cols-2">
+      <details><summary class="cursor-pointer text-sm font-medium">高级设置</summary><div class="mt-4 grid gap-5">
         <label class="space-y-2 text-sm"><span>允许的消息作者或 Webhook ID（每行一个，可留空）</span><textarea v-model="authors" rows="3" class="input" /><span class="block text-xs leading-5 text-gray-500">固定只处理带 embed 的机器人或 Webhook 消息。填写后进一步限定来源；留空时不限制作者 ID。</span></label>
-        <label class="space-y-2 text-sm"><span>站内模型接口</span><select v-model="form.api_format" class="input"><option value="responses">Responses</option><option value="chat_completions">Chat Completions</option></select></label>
-        <label class="space-y-2 text-sm md:col-span-2"><span>模型补充规则（可留空）</span><textarea v-model="form.prompt" rows="5" class="input" /><span class="block text-xs leading-5 text-gray-500">内置规则始终生效：只接受已确认发生的重置或发券，并校验原文依据及至少 95% 的置信度。概率预警、Possible reset 和未来的 reset announced 均不触发。</span></label>
+        <label class="space-y-2 text-sm"><span>模型补充规则（可留空）</span><textarea v-model="form.prompt" rows="5" class="input" /><span class="block text-xs leading-5 text-gray-500">内置规则始终生效：只接受已确认发生的重置或发券，并校验原文依据及至少 95% 的置信度。概率预警、Possible reset 和未来的 reset announced 均不触发。</span></label>
       </div></details>
-      <div class="rounded-lg bg-gray-50 p-4 text-sm leading-6 dark:bg-dark-900">默认每 5 分钟检查；新内容仅分析一次，embed 后续变化会重新判断。首条确认通知处理后等待 30 分钟；2 小时内通知合并为同一事件；执行后 12 小时内忽略重复通知，次日的新确认可再次触发。配置变更会取消尚未执行的事件，保留已生效冷却。</div>
+      <div class="rounded-lg bg-gray-50 p-4 text-sm leading-6 dark:bg-dark-900">默认每 5 分钟检查，任一来源确认后立即处理，不等待另一个来源，也不额外等待传播。新内容仅分析一次，embed 后续变化会重新判断；2 小时内通知合并为同一事件；执行后 12 小时内忽略重复通知，次日的新确认可再次触发。配置变更会取消尚未执行的事件，保留已生效冷却。</div>
       <button class="btn btn-primary" :disabled="busy" @click="confirmation = true">保存监测配置</button>
       <p class="text-xs leading-5 text-gray-500">先保存监测配置，再启用上方的全员配额重置并保存服务配置。更换频道或重新启用后从新消息开始。</p>
       <details v-if="overview.recent_messages.length"><summary class="cursor-pointer text-sm font-medium">最近消息判定记录（最多 30 条）</summary><div class="mt-4 divide-y divide-gray-100 dark:divide-dark-700"><article v-for="(record, index) in overview.recent_messages" :key="index" class="space-y-2 py-4 text-sm"><p class="font-medium">{{ record.subject }}</p><p class="break-words text-xs text-gray-500">作者 {{ record.sender }} · {{ new Date(record.received_at).toLocaleString('zh-CN', { hour12: false }) }}</p><p>{{ kindLabel(record.kind) }} · {{ (record.confidence * 100).toFixed(1) }}% · {{ outcomeLabel(record.outcome) }}</p><p v-if="record.evidence" class="break-words text-gray-500">原文依据：{{ record.evidence }}</p></article></div></details>
@@ -52,7 +51,7 @@ const confirmation = ref(false)
 type NumericKey = Exclude<{ [Key in keyof ResetMonitorConfig]: ResetMonitorConfig[Key] extends number ? Key : never }[keyof ResetMonitorConfig], 'model_api_key_id'>
 const numberFields: Array<{ key: NumericKey; label: string; min: number; max: number; hint: string }> = [
   { key: 'poll_seconds', label: '检查间隔（秒）', min: 60, max: 3600, hint: '默认 300 秒（5 分钟），无需频繁检查低频通知。' },
-  { key: 'propagation_minutes', label: '传播等待（分钟）', min: 0, max: 1440, hint: '默认 30 分钟，为不同来源的确认及账号传播预留时间。' },
+  { key: 'propagation_minutes', label: '额外等待（分钟）', min: 0, max: 1440, hint: '默认 0，确认后立即处理；仅在实际观察到账号到账延迟时增加。' },
   { key: 'cooldown_minutes', label: '执行后防重复（分钟）', min: 120, max: 10080, hint: '默认 720 分钟（12 小时），不得短于传播等待及 2 小时合并窗口。' },
 ]
 const kindLabel = (kind: string) => ({ direct_reset: '直接重置', banked_reset: '重置券发放', forecast: '预测或预警', unknown: '未确认' })[kind] || kind

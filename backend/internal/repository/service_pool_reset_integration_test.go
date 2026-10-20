@@ -96,7 +96,7 @@ func TestServicePoolResetPersistsOnceAcrossRestartAndConcurrentScans(t *testing.
 	t.Cleanup(func() { _, _ = integrationDB.ExecContext(ctx, `DELETE FROM api_keys WHERE id=$1`, apiKey.ID) })
 	monitorConfig, err := json.Marshal(service.ResetMonitorConfig{
 		ChannelID: "1561630415750561863", PollSeconds: 300, PropagationMinutes: 30, CooldownMinutes: 720,
-		BankedResetEnabled: true, ModelAPIKeyID: apiKey.ID, Model: "test-model", APIFormat: "responses",
+		BankedResetEnabled: true, ModelAPIKeyID: apiKey.ID, Model: "test-model",
 	})
 	require.NoError(t, err)
 	_, err = integrationDB.ExecContext(ctx, `UPDATE service_pool_reset_monitor SET config=$1::jsonb,owner_user_id=$2,monitor_since=$3,version=version+1 WHERE id=1`, monitorConfig, user.ID, transport.received.Add(-time.Hour))
@@ -190,6 +190,41 @@ func TestResetMonitorConfigMigrationPreservesOwnershipAndTiming(t *testing.T) {
 				require.Equal(t, int64(42), owner)
 				require.Equal(t, int64(7), version)
 				require.True(t, since.Equal(monitorSince))
+			}
+		})
+	}
+}
+
+func TestResetMonitorImmediateConfigMigrationKeepsCustomDelays(t *testing.T) {
+	ctx := context.Background()
+	migration, err := dbmigrations.FS.ReadFile("251_reset_monitor_immediate_internal.sql")
+	require.NoError(t, err)
+	for _, scenario := range []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{"original_default", `{"propagation_minutes":15,"api_format":"chat_completions","model_api_key_id":42,"model":"custom-model"}`, `{"propagation_minutes":0,"model_api_key_id":42,"model":"custom-model"}`},
+		{"previous_default", `{"propagation_minutes":30,"api_format":"responses"}`, `{"propagation_minutes":0}`},
+		{"custom_wait", `{"propagation_minutes":7,"api_format":"responses"}`, `{"propagation_minutes":7}`},
+		{"unconfigured", `{}`, `{}`},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			tx, err := integrationDB.BeginTx(ctx, nil)
+			require.NoError(t, err)
+			defer func() { _ = tx.Rollback() }()
+			_, err = tx.ExecContext(ctx, `CREATE TEMP TABLE service_pool_reset_monitor (LIKE public.service_pool_reset_monitor INCLUDING DEFAULTS) ON COMMIT DROP`)
+			require.NoError(t, err)
+			_, err = tx.ExecContext(ctx, `INSERT INTO service_pool_reset_monitor (id,config,version) VALUES (1,$1::jsonb,7)`, scenario.before)
+			require.NoError(t, err)
+			for range 2 {
+				_, err = tx.ExecContext(ctx, string(migration))
+				require.NoError(t, err)
+				var config string
+				var version int64
+				require.NoError(t, tx.QueryRowContext(ctx, `SELECT config,version FROM service_pool_reset_monitor WHERE id=1`).Scan(&config, &version))
+				require.JSONEq(t, scenario.after, config)
+				require.Equal(t, int64(7), version)
 			}
 		})
 	}
