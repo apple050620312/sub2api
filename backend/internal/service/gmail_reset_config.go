@@ -145,7 +145,7 @@ func (s *OnboardingService) loadGmailReset(ctx context.Context) (*gmailResetStor
 	}
 	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
-		return nil, fmt.Errorf("Gmail 监测配置不可用")
+		return nil, fmt.Errorf("无法读取 Gmail 监测配置")
 	}
 	stored := &gmailResetStored{Config: defaultGmailResetConfig()}
 	var raw []byte
@@ -217,7 +217,7 @@ func (s *OnboardingService) UpdateGmailReset(ctx context.Context, cfg GmailReset
 	result, err := s.client(ctx).ExecContext(ctx, `WITH changed AS (UPDATE service_pool_reset_gmail SET config=$1::jsonb,credentials_encrypted=$2,model_key_encrypted=$3,version=version+1,
 refresh_token_encrypted=CASE WHEN $4 THEN '' ELSE refresh_token_encrypted END,email=CASE WHEN $4 THEN '' ELSE email END,
 oauth_state_hash='',oauth_verifier_encrypted='' WHERE id=1 AND version=$5 RETURNING id)
-UPDATE service_pool_reset_state SET next_check_at=NOW() WHERE id=1 AND EXISTS (SELECT 1 FROM changed)`, payload, credentialsEncrypted, keyEncrypted, changedCredentials, stored.Version)
+UPDATE service_pool_reset_state SET next_check_at=NOW(),state=state #- '{gmail,pending}' #- '{status,pending_until}' WHERE id=1 AND EXISTS (SELECT 1 FROM changed)`, payload, credentialsEncrypted, keyEncrypted, changedCredentials, stored.Version)
 	if err != nil {
 		return nil, err
 	}

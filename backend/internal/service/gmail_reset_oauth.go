@@ -133,7 +133,7 @@ UPDATE service_pool_reset_gmail SET oauth_state_hash='',oauth_verifier_encrypted
 		return err
 	}
 	result, err := s.db.ExecContext(ctx, `WITH connected AS (UPDATE service_pool_reset_gmail SET refresh_token_encrypted=$1,email=$2,monitor_since=NOW(),version=version+1 WHERE id=1 AND version=$3 RETURNING id)
-UPDATE service_pool_reset_state SET next_check_at=NOW() WHERE id=1 AND EXISTS (SELECT 1 FROM connected)`, refreshEncrypted, strings.ToLower(profile.Email), stored.Version)
+UPDATE service_pool_reset_state SET next_check_at=NOW(),state=state #- '{gmail,pending}' #- '{status,pending_until}' WHERE id=1 AND EXISTS (SELECT 1 FROM connected)`, refreshEncrypted, strings.ToLower(profile.Email), stored.Version)
 	if err != nil {
 		return err
 	}
@@ -195,6 +195,6 @@ func gmailResetGet(ctx context.Context, client *http.Client, token, endpoint str
 
 func (s *OnboardingService) DisconnectGmailReset(ctx context.Context) error {
 	_, err := s.db.ExecContext(ctx, `WITH disconnected AS (UPDATE service_pool_reset_gmail SET refresh_token_encrypted='',email='',oauth_state_hash='',oauth_verifier_encrypted='',version=version+1 WHERE id=1 RETURNING id)
-UPDATE service_pool_reset_state SET next_check_at=NOW() WHERE id=1 AND EXISTS (SELECT 1 FROM disconnected)`)
+UPDATE service_pool_reset_state SET next_check_at=NOW(),state=state #- '{gmail,pending}' #- '{status,pending_until}' WHERE id=1 AND EXISTS (SELECT 1 FROM disconnected)`)
 	return err
 }

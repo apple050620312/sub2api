@@ -313,7 +313,7 @@ func (s *OnboardingService) UpdateConfig(ctx context.Context, next OnboardingCon
 		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_gmail SET monitor_since=NOW(),version=version+1 WHERE id=1`); err != nil {
 			return OnboardingConfig{}, err
 		}
-		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_state SET next_check_at=NOW() WHERE id=1`); err != nil {
+		if _, err := tx.Client().ExecContext(ctx, `UPDATE service_pool_reset_state SET next_check_at=NOW(),state=state #- '{gmail,pending}' #- '{status,pending_until}' WHERE id=1`); err != nil {
 			return OnboardingConfig{}, err
 		}
 	}

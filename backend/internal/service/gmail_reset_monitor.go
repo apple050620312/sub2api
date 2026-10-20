@@ -133,7 +133,7 @@ func (s *ServicePoolResetService) gmailResetRound(ctx context.Context, stored *g
 		}
 		received, err := strconv.ParseInt(message.InternalDate, 10, 64)
 		if err != nil {
-			processingError = fmt.Errorf("Gmail 邮件时间戳无效，已跳过")
+			processingError = fmt.Errorf("邮件的 Gmail 时间戳无效，已跳过")
 			records = append(records, gmailResetMailRecord{Key: messageKey, ReceivedAt: time.Now(), Kind: "unknown", Outcome: "invalid_message"})
 			continue
 		}

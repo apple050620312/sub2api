@@ -128,8 +128,8 @@ func gmailResetBody(part gmailResetPart, depth int) string {
 				return
 			}
 			if node.Type == html.TextNode {
-				builder.WriteString(node.Data)
-				builder.WriteByte(' ')
+				_, _ = builder.WriteString(node.Data)
+				_ = builder.WriteByte(' ')
 			}
 			for child := node.FirstChild; child != nil; child = child.NextSibling {
 				walk(child)
@@ -201,7 +201,7 @@ func gmailResetList(ctx context.Context, client *http.Client, token, query strin
 			return ids, nil
 		}
 	}
-	return nil, fmt.Errorf("Gmail 待处理邮件超过 1000 封，请缩小发件人或查询条件")
+	return nil, fmt.Errorf("待处理 Gmail 邮件超过 1000 封，请缩小发件人或查询条件")
 }
 
 func gmailResetAnalyze(ctx context.Context, client *http.Client, cfg GmailResetConfig, key string, record gmailResetMailRecord) (*gmailResetAnalysis, error) {
@@ -266,12 +266,12 @@ func gmailResetAnalyze(ctx context.Context, client *http.Client, cfg GmailResetC
 		for _, item := range result.Output {
 			for _, content := range item.Content {
 				if content.Type == "output_text" {
-					output.WriteString(content.Text)
+					_, _ = output.WriteString(content.Text)
 				}
 			}
 		}
 	} else if len(result.Choices) == 1 && result.Choices[0].FinishReason == "stop" {
-		output.WriteString(result.Choices[0].Message.Content)
+		_, _ = output.WriteString(result.Choices[0].Message.Content)
 	}
 	return parseGmailResetAnalysis(output.String(), record)
 }
