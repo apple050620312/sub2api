@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -518,11 +519,12 @@ func TestGetOpenAICodexCanonicalUserAgentOutboundIdentity(t *testing.T) {
 					SettingKeyOpenAICodexClientVersionSynced: version.synced,
 				}}, nil)
 				wantUA := buildCodexCLIUserAgent(version.want)
-				wantOriginator := "codex-tui"
+				wantOriginator := openai.CodexDefaultOriginator
 				if ua.client != "" {
 					wantUA = ua.client + "/" + version.want + ua.suffix
 					wantOriginator = ua.client
 				}
+				wantOriginator, wantUA, _ = openai.NormalizeCodexClientIdentityToCLI(wantOriginator, wantUA)
 				SetCodexCanonicalUserAgentResolver(func() string {
 					return svc.GetOpenAICodexCanonicalUserAgent(context.Background())
 				})
