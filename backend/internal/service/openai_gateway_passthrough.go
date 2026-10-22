@@ -1628,9 +1628,7 @@ func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
 	switch openAIStreamFailedEventSemanticStatus(payload, message) {
 	case http.StatusForbidden:
 		return openAIStream403AccountFailure(payload, message)
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529,
-		http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable,
-		http.StatusGatewayTimeout, 520, 521, 522, 523, 524:
+	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
 		return true
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
