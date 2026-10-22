@@ -90,6 +90,18 @@ func TestWithOpenAIGuardianParentAffinity_RequiresUnambiguousReviewLineage(t *te
 		require.Equal(t, wantHash, affinity.currentSessionHash)
 	})
 
+	t.Run("official client metadata fields", func(t *testing.T) {
+		gin.SetMode(gin.TestMode)
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+		body := []byte(`{"model":"codex-auto-review","client_metadata":{"x-openai-subagent":"guardian","parent_thread_id":"` + parentID + `"}}`)
+		ctx := WithOpenAIGuardianParentAffinity(context.Background(), c, body, codexAutoReviewModel)
+		affinity, ok := openAIGuardianParentAffinityFromContext(ctx)
+		require.True(t, ok)
+		require.Equal(t, wantHash, affinity.currentSessionHash)
+	})
+
 	for name, ctx := range map[string]context.Context{
 		"ordinary model":       guardianAffinityTestContext(t, "gpt-5.6-sol", "guardian", parentID, ""),
 		"ordinary subagent":    guardianAffinityTestContext(t, codexAutoReviewModel, "collab_spawn", parentID, ""),

@@ -103,7 +103,23 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	}
 	// Capacity shedding describes this request, not account health. Keep the
 	// account schedulable while the request-local retry budget handles recovery.
+	// 同一账号和模型重复过载时，增加进程内的模型冷却，避免下一次请求立即选中
+	// 相同的失败指纹。这里不会写入账号级调度封禁。
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIRequestScopedCapacityShed("", responseBody) {
+		if len(canonicalModel) > 0 &&
+			(account.Type == AccountTypeAPIKey || account.IsOpenAIOAuthLike()) {
+			decision := s.recordOpenAIAccountModelTransientFailure(account, canonicalModel[0], time.Now())
+			if decision.FailureStreak > 0 {
+				slog.Warn("openai_model_transient_state",
+					"account_id", account.ID,
+					"model", openAIAccountModelTransientModel(canonicalModel[0]),
+					"failure_streak", decision.FailureStreak,
+					"cooldown_ms", decision.Cooldown.Milliseconds(),
+					"block_scope", "account_model",
+					"capacity_shed", true,
+				)
+			}
+		}
 		return false
 	}
 	stateCtx, cancel := openAIAccountStateContext(ctx)
