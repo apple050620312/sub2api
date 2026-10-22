@@ -110,6 +110,33 @@ func TestOpenAIHTTPCapacityShedIsRequestScopedForOAuthAccounts(t *testing.T) {
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestOpenAICapacityShedHonorsRetryAfter(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		headers http.Header
+		body    string
+		want    time.Duration
+	}{
+		{name: "http seconds", headers: http.Header{"Retry-After": []string{"6"}}, want: 6 * time.Second},
+		{name: "http milliseconds", headers: http.Header{"Retry-After-Ms": []string{"6000"}}, want: 6 * time.Second},
+		{name: "body seconds", body: `{"error":{"headers":{"retry-after":"7"},"message":"Our servers are currently overloaded. Please try again later."}}`, want: 7 * time.Second},
+		{name: "body milliseconds", body: `{"response":{"error":{"headers":{"retry-after-ms":"7000"},"message":"Our servers are currently overloaded. Please try again later."}}}`, want: 7 * time.Second},
+		{name: "bounded", headers: http.Header{"Retry-After": []string{"60"}}, want: openAIRequestScopedRetryMaxDelay},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			failoverErr := newOpenAIUpstreamFailoverError(
+				http.StatusServiceUnavailable,
+				test.headers,
+				[]byte(test.body),
+				"Our servers are currently overloaded. Please try again later.",
+				false,
+			)
+			require.True(t, failoverErr.RequestScopedTransient)
+			require.Equal(t, test.want, failoverErr.SameAccountRetryDelay)
+		})
+	}
+}
+
 // 上游降载的真实序列是「event: error → event: response.failed」。error 帧不算
 // 客户端输出：若把它当首输出 flush，clientOutputStarted 被固化，随后的 failed
 // 事件就进不了 pre-output failover 分支，只能把致命错误原样转发给客户端。
