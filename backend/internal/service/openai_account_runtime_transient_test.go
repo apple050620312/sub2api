@@ -59,6 +59,25 @@ func TestHandleOpenAITransientError_TransientStatusesUseModelScope(t *testing.T)
 	}
 }
 
+func TestHandleOpenAITransientError_OAuthUsesModelScope(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       5110,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+	}
+
+	firstShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"code":"server_error","message":"An error occurred while processing your request"}}`), "codex-auto-review")
+	secondShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"code":"server_error","message":"An error occurred while processing your request"}}`), "codex-auto-review")
+
+	require.False(t, firstShouldDisable)
+	require.False(t, secondShouldDisable)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "codex-auto-review"))
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-6.1-sol"))
+}
+
 func TestHandleOpenAITransientError_529RemainsOverloadOnly(t *testing.T) {
 	require.False(t, shouldCooldownOpenAITransientUpstreamError(529, []byte(`{"error":{"message":"overloaded"}}`)))
 }
