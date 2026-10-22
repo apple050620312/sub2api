@@ -75,7 +75,7 @@
       </div>
       <div v-show="tab === 'pool'" role="tabpanel" class="space-y-6">
         <section v-if="status?.pool" class="space-y-8 rounded-lg border border-gray-200 bg-white p-6 dark:border-dark-700 dark:bg-dark-800">
-          <div><h2 class="font-semibold text-gray-900 dark:text-white">号池总览</h2><p class="mt-2 text-sm leading-6 text-gray-500">展示全部账号的名称与窗口状态，邮箱自动隐藏。平均容量按当前可参与调度且窗口数据有效的账号计算，不代表个人额度。</p></div>
+          <div><h2 class="font-semibold text-gray-900 dark:text-white">号池总览</h2><p class="mt-2 text-sm leading-6 text-gray-500">展示全部账号的名称与窗口状态，邮箱自动隐藏。5h 平均剩余按已启用、可调度、7d 额度未耗尽且有有效窗口数据的账号计算；临时限流、过载或暂时不可用不会改变平均值。</p></div>
           <div class="grid gap-5 sm:grid-cols-2">
             <div v-for="window in poolWindows" :key="window.label" class="rounded-lg bg-gray-50 p-5 dark:bg-dark-700/50">
               <p class="text-xs text-gray-500">{{ window.label }} 平均剩余容量</p>

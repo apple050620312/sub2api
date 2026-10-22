@@ -62,7 +62,7 @@ func TestDynamic5hPublicPoolReportsAccountReadFailure(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestDynamic5hPublicPoolUsageUsesOnlyEffectiveAccounts(t *testing.T) {
+func TestDynamic5hPublicPoolUsageUsesQuotaEligibleAccountsForFiveHourAverage(t *testing.T) {
 	now := time.Date(2026, 10, 22, 8, 0, 0, 0, time.UTC)
 	valid := func(used5h, used7d float64) Account {
 		return Account{
@@ -80,6 +80,8 @@ func TestDynamic5hPublicPoolUsageUsesOnlyEffectiveAccounts(t *testing.T) {
 
 	rateLimited := valid(90, 30)
 	rateLimited.RateLimitResetAt = timePtr(now.Add(time.Hour))
+	_, pressureEligible := dynamic5hWindowForAccount(&rateLimited, now)
+	require.False(t, pressureEligible, "临时运行时阻塞仍应从即时压力容量中移除账号")
 	exhausted := valid(80, 100)
 	unschedulable := valid(70, 40)
 	unschedulable.Schedulable = false
@@ -90,9 +92,9 @@ func TestDynamic5hPublicPoolUsageUsesOnlyEffectiveAccounts(t *testing.T) {
 	)
 	require.NotNil(t, fiveHour)
 	require.NotNil(t, sevenDay)
-	require.Equal(t, 20.0, *fiveHour)
+	require.Equal(t, 55.0, *fiveHour, "临时运行时阻塞不应把有效的 5h 窗口从平均值中移除")
 	require.Equal(t, 30.0, *sevenDay)
-	require.Equal(t, 1, fiveHourCount)
+	require.Equal(t, 2, fiveHourCount)
 	require.Equal(t, 1, sevenDayCount)
 }
 

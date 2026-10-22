@@ -367,6 +367,13 @@ func dynamic5hWindowForAccount(a *Account, now time.Time) (dynamic5hAccountWindo
 	if !dynamic5hAccountAvailable(a, now) {
 		return dynamic5hAccountWindow{}, false
 	}
+	return dynamic5hWindowDataForAccount(a, now)
+}
+
+func dynamic5hWindowDataForAccount(a *Account, now time.Time) (dynamic5hAccountWindow, bool) {
+	if a == nil {
+		return dynamic5hAccountWindow{}, false
+	}
 	platform := strings.ToLower(strings.TrimSpace(a.Platform))
 	switch platform {
 	case PlatformOpenAI:
@@ -403,17 +410,14 @@ func dynamic5hWindowForAccount(a *Account, now time.Time) (dynamic5hAccountWindo
 	}
 }
 
-func dynamic5hAccountAvailable(a *Account, now time.Time) bool {
+func dynamic5hAccountQuotaEligible(a *Account, now time.Time) bool {
 	if a == nil || !a.Schedulable || !a.IsActive() {
 		return false
 	}
 	if a.AutoPauseOnExpired && a.ExpiresAt != nil && !now.Before(*a.ExpiresAt) {
 		return false
 	}
-	if (a.OverloadUntil != nil && now.Before(*a.OverloadUntil)) ||
-		(a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt)) ||
-		(a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil)) ||
-		(a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded()) {
+	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
 		return false
 	}
 	platform := strings.ToLower(strings.TrimSpace(a.Platform))
@@ -441,6 +445,18 @@ func dynamic5hAccountAvailable(a *Account, now time.Time) bool {
 		if used >= 100 && (reset == nil || reset.After(now)) {
 			return false
 		}
+	}
+	return true
+}
+
+func dynamic5hAccountAvailable(a *Account, now time.Time) bool {
+	if !dynamic5hAccountQuotaEligible(a, now) {
+		return false
+	}
+	if (a.OverloadUntil != nil && now.Before(*a.OverloadUntil)) ||
+		(a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt)) ||
+		(a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil)) {
+		return false
 	}
 	return true
 }
@@ -486,19 +502,14 @@ func dynamic5hPublicPoolUsage(accounts []Account, now time.Time) (fiveHour *floa
 	var fiveHourTotal, sevenDayTotal float64
 	for index := range accounts {
 		account := &accounts[index]
-		// Use the same availability predicate as the pressure calculator. The
-		// previous implementation only checked the persisted schedulable flag,
-		// so an API-key quota exhaustion could still inflate the public average
-		// even though the scheduler had already removed that account from the
-		// effective pool.
-		if !dynamic5hAccountAvailable(account, now) {
+		// 平均值描述号池的额度窗口状态，临时运行时阻塞不应改变分母。
+		// 压力评估仍使用更严格的 dynamic5hAccountAvailable 判断即时调度容量。
+		if !dynamic5hAccountQuotaEligible(account, now) {
 			continue
 		}
 		diagnostic := dynamic5hAccountDiagnostic(account, now)
-		// The five-hour average must use the exact windows that contribute to
-		// pool pressure. This also handles an already-reset OpenAI snapshot as a
-		// fresh idle window instead of treating its stale percentage as current.
-		if window, ok := dynamic5hWindowForAccount(account, now); ok && finitePercent(window.used*100) {
+		// 已经重置的 OpenAI 快照按新的空闲窗口处理，避免把过期百分比当作当前用量。
+		if window, ok := dynamic5hWindowDataForAccount(account, now); ok && finitePercent(window.used*100) {
 			fiveHourTotal += clampPercent(window.used * 100)
 			fiveHourCount++
 		}
