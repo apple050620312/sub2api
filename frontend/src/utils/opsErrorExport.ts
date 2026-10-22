@@ -1,6 +1,13 @@
 import { getErrorLogDetail, listErrorLogs } from '@/api/admin/ops'
 import type { OpsErrorDetail, OpsErrorListQueryParams } from '@/api/admin/ops'
+import type { OpsErrorLogsResponse, OpsRequestOptions } from '@/api/admin/ops'
 import { numericRequestTypeKind, requestTypeLabelKey } from '@/utils/errorBadges'
+
+export type OpsErrorExportSource = {
+  list: (params: OpsErrorListQueryParams, options?: OpsRequestOptions) => Promise<OpsErrorLogsResponse>
+  getDetail: (id: number, options?: OpsRequestOptions) => Promise<OpsErrorDetail>
+  sheetName?: string
+}
 
 type ExportOptions = {
   signal: AbortSignal
@@ -8,7 +15,16 @@ type ExportOptions = {
   onProgress: (current: number, total: number) => void
 }
 
-export async function createErrorLogWorkbook(params: OpsErrorListQueryParams, options: ExportOptions) {
+const legacyErrorExportSource: OpsErrorExportSource = {
+  list: listErrorLogs,
+  getDetail: getErrorLogDetail,
+}
+
+export async function createErrorLogWorkbook(
+  params: OpsErrorListQueryParams,
+  options: ExportOptions,
+  source: OpsErrorExportSource = legacyErrorExportSource
+) {
   const query = { ...params, page_size: 100 }
   const { signal, t, onProgress } = options
   const XLSX = await import('xlsx')
@@ -35,10 +51,10 @@ export async function createErrorLogWorkbook(params: OpsErrorListQueryParams, op
     ['status_code', t('admin.ops.errorLog.status')],
     ['error_owner', t('admin.ops.errorDetail.classificationKeys.owner')],
     ['error_source', t('admin.ops.errorDetail.classificationKeys.source')],
-    ['severity', t('admin.usage.errorExport.severity')],
+    ['severity', t('admin.ops.errorExport.severity')],
     ['message', t('admin.ops.errorDetail.message')],
     ['request_id', t('admin.usage.requestId')],
-    ['client_request_id', t('admin.usage.errorExport.clientRequestId')],
+    ['client_request_id', t('admin.ops.errorExport.clientRequestId')],
     ['request_path', t('admin.ops.errorDetail.requestPath')],
     ['inbound_endpoint', t('usage.inboundEndpoint')],
     ['upstream_endpoint', t('usage.upstreamEndpoint')],
@@ -66,14 +82,14 @@ export async function createErrorLogWorkbook(params: OpsErrorListQueryParams, op
   let page = 1
   while (true) {
     signal.throwIfAborted()
-    const result = await listErrorLogs({ ...query, page }, { signal })
+    const result = await source.list({ ...query, page }, { signal })
     signal.throwIfAborted()
     onProgress(current, result.total)
     for (let offset = 0; offset < result.items.length; offset += 5) {
       signal.throwIfAborted()
       const details = await Promise.all(result.items.slice(offset, offset + 5).map(async (item) => ({
         ...item,
-        ...await getErrorLogDetail(item.id, { signal }),
+        ...await source.getDetail(item.id, { signal }),
       })))
       signal.throwIfAborted()
       const rows = details.map((detail) => {
@@ -119,6 +135,6 @@ export async function createErrorLogWorkbook(params: OpsErrorListQueryParams, op
   signal.throwIfAborted()
   XLSX.utils.sheet_add_aoa(sheet, [headers], { origin: 'A1' })
   const workbook = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Errors')
+  XLSX.utils.book_append_sheet(workbook, sheet, source.sheetName || 'Errors')
   return workbook
 }

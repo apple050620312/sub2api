@@ -555,12 +555,6 @@ export default {
       ipAddress: 'IP',
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
-      errorExport: {
-        severity: '严重程度',
-        clientRequestId: '客户端请求 ID',
-        success: '错误记录导出成功',
-        failed: '错误记录导出失败，请重试'
-      },
       userDeletedBadge: '已删除',
       tokenRanking: {
         subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量',

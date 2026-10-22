@@ -4,7 +4,7 @@ import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
 
-const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, getErrorLogDetail, showError, showSuccess, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
+const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, showError, showSuccess, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
     getItem: vi.fn(() => null),
     setItem: vi.fn(),
@@ -19,7 +19,6 @@ const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listE
     getById: vi.fn(),
     getModelStats: vi.fn(),
     listErrorLogs: vi.fn(),
-    getErrorLogDetail: vi.fn(),
     showError: vi.fn(),
     showSuccess: vi.fn(),
     routeQuery: {} as Record<string, string>,
@@ -88,7 +87,6 @@ vi.mock('xlsx', () => ({
 
 vi.mock('@/api/admin/ops', () => ({
   listErrorLogs,
-  getErrorLogDetail,
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -738,103 +736,6 @@ describe('admin UsageView ranking tab', () => {
     expect((wrapper.vm as any).activeTab).toBe('usage')
     expect((wrapper.vm as any).filters.user_id).toBe(5)
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ user_id: 5 }), expect.anything())
-  })
-})
-
-describe('admin UsageView error export', () => {
-  let wrapper: ReturnType<typeof mountRouteFilteredUsageView>
-
-  beforeEach(async () => {
-    vi.useFakeTimers()
-    Object.keys(routeQuery).forEach((key) => delete routeQuery[key])
-    vi.clearAllMocks()
-    list.mockResolvedValue({ items: [], total: 0, pages: 0 })
-    getStats.mockResolvedValue({})
-    getSnapshotV2.mockResolvedValue({ trend: [], models: [], groups: [] })
-    getModelStats.mockResolvedValue({ models: [] })
-    listErrorLogs.mockReset().mockResolvedValue({ items: [{ id: 9 }], total: 1, pages: 1 })
-    getErrorLogDetail.mockReset().mockResolvedValue({ id: 9, message: 'Upstream unavailable', upstream_error_detail: 'Connection reset' })
-    wrapper = mountRouteFilteredUsageView()
-    vi.advanceTimersByTime(120)
-    await flushPromises()
-    const vm = wrapper.vm as any
-    vm.activeTab = 'errors'
-    Object.assign(vm.filters, {
-      start_date: '2026-10-18', end_date: '2026-10-19',
-      user_id: 3, api_key_id: 4, account_id: 5, group_id: 6,
-      model: 'gpt-5', error_phase: 'upstream', error_category: 'rate_limit', status_code: 429,
-    })
-    vm.errPage = 7
-    vm.errSortBy = 'status_code'
-    vm.errSortOrder = 'asc'
-    await flushPromises()
-  })
-
-  afterEach(() => {
-    wrapper.unmount()
-    vi.useRealTimers()
-  })
-
-  it('exports the errors tab using its filters and sorting rather than usage records', async () => {
-    wrapper.findComponent(UsageFiltersStub).vm.$emit('export')
-    await flushPromises()
-    expect(listErrorLogs).toHaveBeenCalledWith({
-      page: 1, page_size: 100, view: 'all',
-      start_time: new Date('2026-10-18T00:00:00').toISOString(),
-      end_time: new Date('2026-10-19T23:59:59.999').toISOString(),
-      user_id: 3, api_key_id: 4, account_id: 5, group_id: 6,
-      model: 'gpt-5', phase: 'upstream', category: 'rate_limit', status_codes: '429',
-      sort_by: 'status_code', sort_order: 'asc',
-    }, { signal: expect.any(AbortSignal) })
-    expect(exportList).not.toHaveBeenCalled()
-    expect(getErrorLogDetail).toHaveBeenCalledWith(9, { signal: expect.any(AbortSignal) })
-    expect(saveAs).toHaveBeenCalledWith(expect.any(Blob), 'errors_2026-10-18_to_2026-10-19.xlsx')
-    expect(showSuccess).toHaveBeenCalledWith('admin.usage.errorExport.success')
-    expect((wrapper.vm as any).exporting).toBe(false)
-  })
-
-  it('keeps the filename stable if dates change while details are loading', async () => {
-    let resolveDetail!: (value: { id: number }) => void
-    getErrorLogDetail.mockReturnValue(new Promise((resolve) => { resolveDetail = resolve }))
-    const exporting = (wrapper.vm as any).exportToExcel()
-    await flushPromises()
-    ;(wrapper.vm as any).filters.start_date = '2026-10-01'
-    resolveDetail({ id: 9 })
-    await exporting
-    expect(saveAs).toHaveBeenCalledWith(expect.any(Blob), 'errors_2026-10-18_to_2026-10-19.xlsx')
-  })
-
-  it('cancels pending details without downloading or reporting a failure', async () => {
-    let resolveDetail!: (value: { id: number }) => void
-    getErrorLogDetail.mockReturnValue(new Promise((resolve) => { resolveDetail = resolve }))
-    const exporting = (wrapper.vm as any).exportToExcel()
-    await flushPromises()
-    expect((wrapper.vm as any).exporting).toBe(true)
-    wrapper.findComponent({ name: 'UsageExportProgress' }).vm.$emit('cancel')
-    expect(getErrorLogDetail.mock.calls[0][1].signal.aborted).toBe(true)
-    resolveDetail({ id: 9 })
-    await exporting
-    expect(saveAs).not.toHaveBeenCalled()
-    expect(showError).not.toHaveBeenCalled()
-    expect(showSuccess).not.toHaveBeenCalled()
-    expect((wrapper.vm as any).exporting).toBe(false)
-    expect((wrapper.vm as any).exportProgress.show).toBe(false)
-  })
-
-  it('does not download partial data on failure and lets the user retry', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      getErrorLogDetail.mockRejectedValueOnce(new Error('Network unavailable'))
-      await (wrapper.vm as any).exportToExcel()
-      expect(saveAs).not.toHaveBeenCalled()
-      expect(showError).toHaveBeenCalledWith('admin.usage.errorExport.failed')
-      expect((wrapper.vm as any).exporting).toBe(false)
-      expect(getErrorLogDetail.mock.calls[0][1].signal.aborted).toBe(true)
-      await (wrapper.vm as any).exportToExcel()
-      expect(saveAs).toHaveBeenCalledTimes(1)
-    } finally {
-      consoleError.mockRestore()
-    }
   })
 })
 

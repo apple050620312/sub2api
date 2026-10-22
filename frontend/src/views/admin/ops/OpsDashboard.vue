@@ -22,6 +22,7 @@
         :thresholds="metricThresholds"
         :auto-refresh-enabled="autoRefreshEnabled"
         :auto-refresh-countdown="autoRefreshCountdown"
+        :error-exporting="errorExporting"
         :fullscreen="isFullscreen"
         :custom-start-time="customStartTime"
         :custom-end-time="customEndTime"
@@ -33,6 +34,7 @@
         @refresh="fetchData"
         @open-request-details="handleOpenRequestDetails"
         @open-error-details="openErrorDetails"
+        @export-errors="exportErrors"
         @open-settings="showSettingsDialog = true"
         @open-alert-rules="showAlertRulesCard = true"
         @enter-fullscreen="enterFullscreen"
@@ -138,6 +140,14 @@
       </template>
     </div>
   </component>
+  <UsageExportProgress
+    :show="errorExportProgress.show"
+    :progress="errorExportProgress.progress"
+    :current="errorExportProgress.current"
+    :total="errorExportProgress.total"
+    :estimated-time="errorExportProgress.estimatedTime"
+    @cancel="cancelErrorExport"
+  />
 </template>
 
 <script setup lang="ts">
@@ -145,11 +155,17 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useDebounceFn, useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { saveAs } from 'file-saver'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import {
+  getRequestErrorDetail,
+  getUpstreamErrorDetail,
+  listRequestErrors,
+  listUpstreamErrors,
   opsAPI,
   type OpsDashboardOverview,
+  type OpsErrorListQueryParams,
   type OpsErrorDistributionResponse,
   type OpsErrorTrendResponse,
   type OpsLatencyHistogramResponse,
@@ -173,6 +189,9 @@ import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
+import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import { createErrorLogWorkbook, type OpsErrorExportSource } from '@/utils/opsErrorExport'
+import { buildOpsErrorTimeParams } from './utils/opsErrorParams'
 
 const route = useRoute()
 const router = useRouter()
@@ -389,6 +408,10 @@ const resumeListState = ref(false)
 const showSettingsDialog = ref(false)
 const showAlertRulesCard = ref(false)
 
+const errorExporting = ref(false)
+const errorExportController = ref<AbortController | null>(null)
+const errorExportProgress = ref({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' })
+
 applyRouteQueryToState()
 
 // Auto refresh settings
@@ -471,6 +494,70 @@ function openErrorDetails(kind: 'request' | 'upstream') {
   showRequestDetails.value = false
   showErrorModal.value = false
   showErrorDetails.value = true
+}
+
+function errorExportSource(kind: 'request' | 'upstream'): OpsErrorExportSource {
+  if (kind === 'upstream') {
+    return { list: listUpstreamErrors, getDetail: getUpstreamErrorDetail, sheetName: 'UpstreamErrors' }
+  }
+  return { list: listRequestErrors, getDetail: getRequestErrorDetail, sheetName: 'RequestErrors' }
+}
+
+function buildErrorExportParams(): OpsErrorListQueryParams {
+  return {
+    page: 1,
+    page_size: 100,
+    view: 'errors',
+    ...buildOpsErrorTimeParams(timeRange.value, customStartTime.value, customEndTime.value),
+    platform: platform.value || undefined,
+    group_id: groupId.value ?? undefined,
+    sort_by: 'created_at',
+    sort_order: 'desc',
+  }
+}
+
+async function exportErrors(kind: 'request' | 'upstream') {
+  if (errorExporting.value) return
+  const controller = new AbortController()
+  errorExportController.value = controller
+  errorExporting.value = true
+  errorExportProgress.value = { show: true, progress: 0, current: 0, total: 0, estimatedTime: '' }
+  try {
+    const workbook = await createErrorLogWorkbook(buildErrorExportParams(), {
+      signal: controller.signal,
+      t,
+      onProgress: (current, total) => {
+        errorExportProgress.value.current = current
+        errorExportProgress.value.total = total
+        errorExportProgress.value.progress = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0
+      },
+    }, errorExportSource(kind))
+    controller.signal.throwIfAborted()
+    const XLSX = await import('xlsx')
+    controller.signal.throwIfAborted()
+    const typeLabel = kind === 'upstream' ? 'upstream' : 'request'
+    const timestamp = new Date().toISOString().replace(/[.:]/g, '-')
+    saveAs(new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    }), `ops-${typeLabel}-errors-${timestamp}.xlsx`)
+    appStore.showSuccess(t('admin.ops.errorDetails.exportSuccess'))
+  } catch (error: any) {
+    if (!controller.signal.aborted) {
+      console.error('[OpsDashboard] Failed to export errors', error)
+      appStore.showError(t('admin.ops.errorDetails.exportFailed'))
+    }
+  } finally {
+    controller.abort()
+    if (errorExportController.value === controller) {
+      errorExportController.value = null
+      errorExporting.value = false
+      errorExportProgress.value.show = false
+    }
+  }
+}
+
+function cancelErrorExport() {
+  errorExportController.value?.abort()
 }
 
 function onTimeRangeChange(v: string | number | boolean | null) {
@@ -842,6 +929,7 @@ async function loadThresholds() {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   abortDashboardFetch()
+  errorExportController.value?.abort()
   pauseCountdown()
 })
 

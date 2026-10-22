@@ -192,7 +192,6 @@ import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admi
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
-import { createErrorLogWorkbook } from '@/utils/opsErrorExport'
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
@@ -574,7 +573,6 @@ const getRequestTypeLabel = (log: AdminUsageLog): string => {
 }
 
 const exportToExcel = async () => {
-  if (activeTab.value === 'errors') return exportErrorsToExcel()
   if (exporting.value) return; exporting.value = true; exportProgress.show = true
   const c = new AbortController(); exportAbortController = c
   try {
@@ -834,45 +832,6 @@ const buildErrorListParams = (page: number, pageSize: number): OpsErrorListQuery
   sort_by: errSortBy.value,
   sort_order: errSortOrder.value,
 })
-
-const exportErrorsToExcel = async () => {
-  if (exporting.value) return
-  const params = buildErrorListParams(1, 100)
-  const filename = `errors_${filters.value.start_date}_to_${filters.value.end_date}.xlsx`
-  const controller = new AbortController()
-  exportAbortController = controller
-  exporting.value = true
-  Object.assign(exportProgress, { show: true, progress: 0, current: 0, total: 0, estimatedTime: '' })
-  try {
-    const workbook = await createErrorLogWorkbook(params, {
-      signal: controller.signal,
-      t,
-      onProgress: (current, total) => {
-        exportProgress.current = current
-        exportProgress.total = total
-        exportProgress.progress = total > 0 ? Math.min(100, Math.round(current / total * 100)) : 0
-      },
-    })
-    const XLSX = await import('xlsx')
-    controller.signal.throwIfAborted()
-    saveAs(new Blob([XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    }), filename)
-    appStore.showSuccess(t('admin.usage.errorExport.success'))
-  } catch (error) {
-    if (!controller.signal.aborted) {
-      console.error('Failed to export errors:', error)
-      appStore.showError(t('admin.usage.errorExport.failed'))
-    }
-  } finally {
-    controller.abort()
-    if (exportAbortController === controller) {
-      exportAbortController = null
-      exporting.value = false
-      exportProgress.show = false
-    }
-  }
-}
 
 const loadAdminErrors = async () => {
   errLoading.value = true

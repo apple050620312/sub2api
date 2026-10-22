@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as XLSX from 'xlsx'
 import { getErrorLogDetail, listErrorLogs } from '@/api/admin/ops'
 import type { OpsErrorDetail, OpsErrorListQueryParams } from '@/api/admin/ops'
-import { createErrorLogWorkbook } from '../opsErrorExport'
+import { createErrorLogWorkbook, type OpsErrorExportSource } from '../opsErrorExport'
 
 vi.mock('@/api/admin/ops', () => ({
   listErrorLogs: vi.fn(),
@@ -48,6 +48,20 @@ beforeEach(() => {
 })
 
 describe('error log Excel export', () => {
+  it('uses the selected error scope and keeps request and upstream exports separate', async () => {
+    const source: OpsErrorExportSource = {
+      list: vi.fn().mockResolvedValue({ items: [makeError(42)], total: 1, page: 1, page_size: 100, pages: 1 }),
+      getDetail: vi.fn().mockResolvedValue(makeError(42)),
+      sheetName: 'RequestErrors',
+    }
+    const workbook = await createErrorLogWorkbook({}, makeOptions(), source)
+
+    expect(source.list).toHaveBeenCalledWith({ page_size: 100, page: 1 }, { signal: expect.any(AbortSignal) })
+    expect(source.getDetail).toHaveBeenCalledWith(42, { signal: expect.any(AbortSignal) })
+    expect(getErrorLogDetail).not.toHaveBeenCalled()
+    expect(workbook.Sheets.RequestErrors).toBeDefined()
+  })
+
   it('exports all filtered pages, retains full details and limits concurrent detail requests', async () => {
     const params: OpsErrorListQueryParams = { page: 4, page_size: 20, model: 'gpt-5', status_codes: '502', sort_by: 'status_code', sort_order: 'asc' }
     vi.mocked(listErrorLogs).mockImplementation(async ({ page }) => {

@@ -21,6 +21,22 @@ function mountHeader(value = overview) {
 
 describe('OpsDashboardHeader output TPS', () => {
 
+  it('exposes separate export actions for request and upstream errors', async () => {
+    const wrapper = mountHeader({
+      ...overview,
+      error_count_sla: 2,
+      upstream_error_count_excl_429_529: 3,
+    })
+    await flushPromises()
+
+    const exportButtons = wrapper.findAll('button').filter((button) => button.text() === 'admin.ops.errorDetails.export')
+    expect(exportButtons).toHaveLength(2)
+    await exportButtons[0].trigger('click')
+    await exportButtons[1].trigger('click')
+    expect(wrapper.emitted('exportErrors')).toEqual([['request'], ['upstream']])
+    wrapper.unmount()
+  })
+
   it('shows per-request P50, slower-tail percentiles and sample count separately from traffic TPS', async () => {
     const wrapper = mountHeader({ ...overview, output_tps: { p5: 2.35, p10: 3.7, p50: 55, avg: 277.75, sample_count: 4 } })
     await flushPromises()

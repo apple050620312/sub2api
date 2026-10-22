@@ -120,18 +120,18 @@ function deferred<T>() {
 }
 
 describe('UsageFilters export action', () => {
-  it('offers a cancellable export on the errors tab without usage cleanup', async () => {
+  it('only offers export on the usage tab', async () => {
     const wrapper = mountFilters()
     await wrapper.setProps({ showActions: true, mode: 'errors' })
+    expect(wrapper.findAll('button').some((button) => button.text() === 'Export')).toBe(false)
+    expect(wrapper.text()).not.toContain('Cleanup')
+    await wrapper.setProps({ mode: 'usage' })
     const exportButton = wrapper.findAll('button').find((button) => button.text() === 'Export')!
     expect(exportButton.exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('Cleanup')
     await exportButton.trigger('click')
     expect(wrapper.emitted('export')).toHaveLength(1)
     await wrapper.setProps({ exporting: true })
     expect(exportButton.attributes('disabled')).toBeDefined()
-    await exportButton.trigger('click')
-    expect(wrapper.emitted('export')).toHaveLength(1)
     await wrapper.setProps({ mode: 'ranking', exporting: false })
     expect(wrapper.findAll('button').some((button) => button.text() === 'Export')).toBe(false)
     wrapper.unmount()

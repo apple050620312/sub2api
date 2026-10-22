@@ -292,6 +292,10 @@ export default {
       errorDetails: {
         upstreamErrors: 'Upstream Errors',
         requestErrors: 'Request Errors',
+        export: 'Export Excel',
+        exporting: 'Exporting…',
+        exportSuccess: 'Error logs exported successfully',
+        exportFailed: 'Failed to export error logs. Please try again.',
         unresolved: 'Unresolved',
         resolved: 'Resolved',
         viewErrors: 'Errors',
@@ -313,6 +317,10 @@ export default {
         },
         total: 'Total:',
         searchPlaceholder: 'Search request_id / client_request_id / message',
+      },
+      errorExport: {
+        severity: 'Severity',
+        clientRequestId: 'Client request ID'
       },
       // Error Detail Modal
       errorDetail: {
