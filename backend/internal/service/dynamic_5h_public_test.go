@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -93,6 +94,59 @@ func TestDynamic5hPublicPoolUsageUsesOnlyEffectiveAccounts(t *testing.T) {
 	require.Equal(t, 30.0, *sevenDay)
 	require.Equal(t, 1, fiveHourCount)
 	require.Equal(t, 1, sevenDayCount)
+}
+
+func TestDynamic5hPublicPoolUsageMatchesPressureEligibility(t *testing.T) {
+	now := time.Date(2026, 10, 22, 8, 0, 0, 0, time.UTC)
+	account := func(used float64) Account {
+		return Account{
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Schedulable: true,
+			Extra: map[string]any{
+				"codex_5h_used_percent": used,
+				"codex_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
+			},
+		}
+	}
+
+	quotaExhausted := account(90)
+	quotaExhausted.Type = AccountTypeAPIKey
+	quotaExhausted.Extra["quota_limit"] = 1.0
+	quotaExhausted.Extra["quota_used"] = 1.0
+
+	fiveHour, fiveHourCount, _, _ := dynamic5hPublicPoolUsage(
+		[]Account{account(20), quotaExhausted},
+		now,
+	)
+	require.NotNil(t, fiveHour)
+	require.Equal(t, 20.0, *fiveHour)
+	require.Equal(t, 1, fiveHourCount)
+}
+
+func TestDynamic5hPublicPoolUsageIgnoresNonFiniteSnapshot(t *testing.T) {
+	now := time.Date(2026, 10, 22, 8, 0, 0, 0, time.UTC)
+	valid := Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"codex_5h_used_percent": 20.0,
+			"codex_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
+		},
+	}
+	invalid := valid
+	invalid.Extra = map[string]any{
+		"codex_5h_used_percent": math.NaN(),
+		"codex_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
+	}
+
+	fiveHour, fiveHourCount, _, _ := dynamic5hPublicPoolUsage([]Account{valid, invalid}, now)
+	require.NotNil(t, fiveHour)
+	require.Equal(t, 20.0, *fiveHour)
+	require.Equal(t, 1, fiveHourCount)
 }
 
 func TestDynamic5hAuditDoesNotExposeHistoricalReasons(t *testing.T) {

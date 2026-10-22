@@ -486,22 +486,24 @@ func dynamic5hPublicPoolUsage(accounts []Account, now time.Time) (fiveHour *floa
 	var fiveHourTotal, sevenDayTotal float64
 	for index := range accounts {
 		account := &accounts[index]
-		if !account.IsActive() || !account.Schedulable {
-			continue
-		}
-		if account.AutoPauseOnExpired && account.ExpiresAt != nil && !now.Before(*account.ExpiresAt) {
+		// Use the same availability predicate as the pressure calculator. The
+		// previous implementation only checked the persisted schedulable flag,
+		// so an API-key quota exhaustion could still inflate the public average
+		// even though the scheduler had already removed that account from the
+		// effective pool.
+		if !dynamic5hAccountAvailable(account, now) {
 			continue
 		}
 		diagnostic := dynamic5hAccountDiagnostic(account, now)
-		if !diagnostic.Included {
-			continue
-		}
-		if diagnostic.FiveHourUsed != nil {
-			fiveHourTotal += math.Max(0, math.Min(100, *diagnostic.FiveHourUsed))
+		// The five-hour average must use the exact windows that contribute to
+		// pool pressure. This also handles an already-reset OpenAI snapshot as a
+		// fresh idle window instead of treating its stale percentage as current.
+		if window, ok := dynamic5hWindowForAccount(account, now); ok && finitePercent(window.used*100) {
+			fiveHourTotal += clampPercent(window.used * 100)
 			fiveHourCount++
 		}
-		if diagnostic.SevenDayUsed != nil {
-			sevenDayTotal += math.Max(0, math.Min(100, *diagnostic.SevenDayUsed))
+		if diagnostic.Included && diagnostic.SevenDayUsed != nil && finitePercent(*diagnostic.SevenDayUsed) {
+			sevenDayTotal += clampPercent(*diagnostic.SevenDayUsed)
 			sevenDayCount++
 		}
 	}
@@ -514,6 +516,14 @@ func dynamic5hPublicPoolUsage(accounts []Account, now time.Time) (fiveHour *floa
 		sevenDay = &value
 	}
 	return fiveHour, fiveHourCount, sevenDay, sevenDayCount
+}
+
+func finitePercent(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func clampPercent(value float64) float64 {
+	return math.Max(0, math.Min(100, value))
 }
 
 func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hAdminOverview {
