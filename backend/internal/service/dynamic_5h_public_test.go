@@ -61,6 +61,40 @@ func TestDynamic5hPublicPoolReportsAccountReadFailure(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDynamic5hPublicPoolUsageUsesOnlyEffectiveAccounts(t *testing.T) {
+	now := time.Date(2026, 10, 22, 8, 0, 0, 0, time.UTC)
+	valid := func(used5h, used7d float64) Account {
+		return Account{
+			Platform:    PlatformOpenAI,
+			Status:      StatusActive,
+			Schedulable: true,
+			Extra: map[string]any{
+				"codex_5h_used_percent": used5h,
+				"codex_7d_used_percent": used7d,
+				"codex_5h_reset_at":     now.Add(2 * time.Hour).Format(time.RFC3339),
+				"codex_7d_reset_at":     now.Add(2 * 24 * time.Hour).Format(time.RFC3339),
+			},
+		}
+	}
+
+	rateLimited := valid(90, 30)
+	rateLimited.RateLimitResetAt = timePtr(now.Add(time.Hour))
+	exhausted := valid(80, 100)
+	unschedulable := valid(70, 40)
+	unschedulable.Schedulable = false
+
+	fiveHour, fiveHourCount, sevenDay, sevenDayCount := dynamic5hPublicPoolUsage(
+		[]Account{valid(20, 30), rateLimited, exhausted, unschedulable},
+		now,
+	)
+	require.NotNil(t, fiveHour)
+	require.NotNil(t, sevenDay)
+	require.Equal(t, 20.0, *fiveHour)
+	require.Equal(t, 30.0, *sevenDay)
+	require.Equal(t, 1, fiveHourCount)
+	require.Equal(t, 1, sevenDayCount)
+}
+
 func TestDynamic5hAuditDoesNotExposeHistoricalReasons(t *testing.T) {
 	var audit Dynamic5hAuditLog
 	require.NoError(t, json.Unmarshal([]byte(`{"reason":"private historical reason","action":"policy_update"}`), &audit))

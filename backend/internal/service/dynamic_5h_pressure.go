@@ -493,6 +493,9 @@ func dynamic5hPublicPoolUsage(accounts []Account, now time.Time) (fiveHour *floa
 			continue
 		}
 		diagnostic := dynamic5hAccountDiagnostic(account, now)
+		if !diagnostic.Included {
+			continue
+		}
 		if diagnostic.FiveHourUsed != nil {
 			fiveHourTotal += math.Max(0, math.Min(100, *diagnostic.FiveHourUsed))
 			fiveHourCount++
