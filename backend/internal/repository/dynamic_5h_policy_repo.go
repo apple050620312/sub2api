@@ -13,6 +13,26 @@ type dynamic5hPolicyRepository struct {
 	db *sql.DB
 }
 
+func (r *dynamic5hPolicyRepository) GetDynamic5hPressureThresholds(ctx context.Context) (service.Dynamic5hPressureThresholds, bool, error) {
+	var thresholds service.Dynamic5hPressureThresholds
+	err := r.db.QueryRowContext(ctx, `SELECT peak_threshold, normal_threshold FROM dynamic_5h_pressure_settings WHERE id=1`).Scan(&thresholds.PeakThreshold, &thresholds.NormalThreshold)
+	if err == sql.ErrNoRows {
+		return service.Dynamic5hPressureThresholds{}, false, nil
+	}
+	return thresholds, err == nil, err
+}
+
+func (r *dynamic5hPolicyRepository) SetDynamic5hPressureThresholds(ctx context.Context, thresholds service.Dynamic5hPressureThresholds, actorID int64) error {
+	var actor any
+	if actorID > 0 {
+		actor = actorID
+	}
+	_, err := r.db.ExecContext(ctx, `INSERT INTO dynamic_5h_pressure_settings (id, peak_threshold, normal_threshold, updated_by, updated_at)
+VALUES (1, $1, $2, $3, NOW())
+ON CONFLICT (id) DO UPDATE SET peak_threshold=EXCLUDED.peak_threshold, normal_threshold=EXCLUDED.normal_threshold, updated_by=EXCLUDED.updated_by, updated_at=NOW()`, thresholds.PeakThreshold, thresholds.NormalThreshold, actor)
+	return err
+}
+
 func NewDynamic5hPolicyRepository(db *sql.DB) service.Dynamic5hPolicyRepository {
 	return &dynamic5hPolicyRepository{db: db}
 }

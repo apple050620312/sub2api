@@ -13,7 +13,7 @@
             <div>
               <p class="text-xs font-semibold uppercase tracking-wider text-gray-400">第一步</p>
               <h2 class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">添加自己的 OpenAI OAuth 账号</h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">只允许 Plus、Pro 或 Business 账号，账号会优先服务你自己。</p>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">只允许 Plus、Pro 或 Business 账号，账号接入后统一由号池调度。</p>
             </div>
             <StatusBadge :status="overview?.account_units ? 'active' : 'inactive'" :label="overview?.accounts.length ? `${overview.account_units} 个 Plus 等值` : '未添加'" />
           </div>
@@ -34,7 +34,7 @@
               <template #cell-status="{ row }"><StatusBadge :status="row.paused ? 'inactive' : row.status" :label="row.paused ? '已暂停' : row.status === 'active' ? '正常' : row.status === 'error' ? '需要处理' : '已停用'" /></template>
               <template #cell-actions="{ row }"><div class="flex flex-wrap gap-2"><button class="btn btn-secondary btn-sm" @click="detail = row">详情</button><button class="btn btn-secondary btn-sm" :disabled="busy" @click="openReauthorization(row)">重新授权</button><button class="btn btn-secondary btn-sm" :disabled="busy || (!row.paused && row.status !== 'active')" @click="askAccountAction(row, row.paused ? 'resume' : 'pause')">{{ row.paused ? '恢复' : '暂停' }}</button><button class="btn btn-danger btn-sm" :disabled="busy" @click="askAccountAction(row, 'delete')">删除</button></div></template>
             </DataTable>
-            <p class="mt-4 text-sm leading-6 text-gray-500">账号优先服务你自己，忙碌时自动使用公共池。暂停或删除账号会重新计算自动订阅资格；恢复账号不会重置用量或延长原有效期。</p>
+            <p class="mt-4 text-sm leading-6 text-gray-500">账号接入后统一由号池调度。暂停或删除账号会重新计算自动订阅资格；恢复账号不会重置用量或延长原有效期。</p>
           </div>
           <div v-if="overview?.subscriptions?.length" class="mt-6 space-y-3 border-t border-gray-100 pt-6 dark:border-dark-700">
             <h3 class="font-medium">当前订阅</h3><div v-for="subscription in overview.subscriptions" :key="subscription.group_name" class="flex flex-wrap items-center justify-between gap-3 text-sm"><span>{{ subscription.group_name }}</span><StatusBadge :status="subscription.status" :label="subscription.status === 'active' ? '有效' : subscription.status === 'suspended' ? '已暂停' : '已到期'" /><span class="text-gray-500">到期：{{ new Date(subscription.expires_at).toLocaleString() }}</span></div>

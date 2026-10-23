@@ -27,6 +27,11 @@ type Dynamic5hPolicyRequest struct {
 	Exempt bool `json:"exempt"`
 }
 
+type Dynamic5hPressureConfigRequest struct {
+	PeakThreshold   float64 `json:"peak_threshold"`
+	NormalThreshold float64 `json:"normal_threshold"`
+}
+
 // NewDashboardHandler creates a new admin dashboard handler
 func NewDashboardHandler(dashboardService *service.DashboardService, aggregationService *service.DashboardAggregationService) *DashboardHandler {
 	return &DashboardHandler{
@@ -58,6 +63,33 @@ func (h *DashboardHandler) GetDynamic5hPressureOverview(c *gin.Context) {
 		return
 	}
 	response.Success(c, h.dynamic5hPressure.AdminOverview(c.Request.Context()))
+}
+
+func (h *DashboardHandler) GetDynamic5hPressureConfig(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.InternalError(c, "五小时限额服务暂时不可用")
+		return
+	}
+	response.Success(c, h.dynamic5hPressure.AdminPressureConfig(c.Request.Context()))
+}
+
+func (h *DashboardHandler) SetDynamic5hPressureConfig(c *gin.Context) {
+	if h.dynamic5hPressure == nil {
+		response.InternalError(c, "五小时限额服务暂时不可用")
+		return
+	}
+	var req Dynamic5hPressureConfigRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "压力门槛格式无效")
+		return
+	}
+	if err := h.dynamic5hPressure.SetAdminPressureConfig(c.Request.Context(), service.Dynamic5hPressureThresholds{
+		PeakThreshold: req.PeakThreshold, NormalThreshold: req.NormalThreshold,
+	}, getAdminIDFromContext(c)); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, h.dynamic5hPressure.AdminPressureConfig(c.Request.Context()))
 }
 
 func (h *DashboardHandler) SetDynamic5hUserPolicy(c *gin.Context) {

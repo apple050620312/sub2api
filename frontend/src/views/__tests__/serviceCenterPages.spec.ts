@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {} }) }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 
-const { getUserStatus, getAdminOverview, setPolicy } = vi.hoisted(() => ({
+const { getUserStatus, getAdminOverview, getPressureConfig, setPressureConfig, setPolicy } = vi.hoisted(() => ({
   getUserStatus: vi.fn(),
   getAdminOverview: vi.fn(),
+  getPressureConfig: vi.fn(),
+  setPressureConfig: vi.fn(),
   setPolicy: vi.fn(),
 }))
 
@@ -19,6 +21,8 @@ vi.mock('@/api/serviceCenter', () => ({
 }))
 vi.mock('@/api/admin/dashboard', () => ({
   getDynamic5hPressureOverview: getAdminOverview,
+  getDynamic5hPressureConfig: getPressureConfig,
+  setDynamic5hPressureConfig: setPressureConfig,
   resetDynamic5hUser: vi.fn(),
   setDynamic5hUserPolicy: setPolicy,
   default: { getDynamic5hPressureOverview: getAdminOverview },
@@ -38,6 +42,51 @@ const global = {
 }
 
 describe('dedicated Dynamic 5h pages', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getPressureConfig.mockResolvedValue({ peak_threshold: 1, normal_threshold: 0.9 })
+  })
+
+  it('lets administrators save pressure thresholds while enforcement is disabled', async () => {
+    getAdminOverview.mockResolvedValue({ pool: { enabled: false }, users: [], accounts: [], audit_logs: [] })
+    getPressureConfig.mockResolvedValue({ peak_threshold: 1.2, normal_threshold: 1.05 })
+    setPressureConfig.mockResolvedValue({ peak_threshold: 1.3, normal_threshold: 1.1 })
+    const wrapper = mount(AdminServiceManagementView, { global })
+    await flushPromises()
+
+    const inputs = wrapper.findAll('input[type="number"]')
+    expect((inputs[0]!.element as HTMLInputElement).value).toBe('120')
+    expect((inputs[1]!.element as HTMLInputElement).value).toBe('105')
+    await inputs[0]!.setValue('130')
+    await inputs[1]!.setValue('110')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(setPressureConfig).toHaveBeenCalledWith({ peak_threshold: 1.3, normal_threshold: 1.1 })
+    wrapper.unmount()
+  })
+
+  it('rejects a leaving threshold above the entering threshold', async () => {
+    getAdminOverview.mockResolvedValue({ pool: { enabled: false }, users: [], accounts: [], audit_logs: [] })
+    const wrapper = mount(AdminServiceManagementView, { global })
+    await flushPromises()
+    await wrapper.findAll('input[type="number"]')[1]!.setValue('110')
+    await wrapper.find('form').trigger('submit')
+    expect(setPressureConfig).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('preserves unsaved thresholds when the status refreshes', async () => {
+    getAdminOverview.mockResolvedValue({ pool: { enabled: false }, users: [], accounts: [], audit_logs: [] })
+    const wrapper = mount(AdminServiceManagementView, { global })
+    await flushPromises()
+    const peakInput = wrapper.findAll('input[type="number"]')[0]!
+    await peakInput.setValue('125')
+    await wrapper.find('header button').trigger('click')
+    await flushPromises()
+    expect((peakInput.element as HTMLInputElement).value).toBe('125')
+    wrapper.unmount()
+  })
+
   it('separates pool capacity from personal usage and distinguishes unknown windows', async () => {
     getUserStatus.mockResolvedValueOnce({
       enabled: true, quota_available: true, state: 'normal', currently_limited: false,

@@ -26,7 +26,6 @@ interface Props {
   thresholds?: OpsMetricThresholds | null // 阈值配置
   autoRefreshEnabled?: boolean
   autoRefreshCountdown?: number
-  errorExporting?: boolean
   fullscreen?: boolean
   customStartTime?: string | null
   customEndTime?: string | null
@@ -41,7 +40,6 @@ interface Emits {
   (e: 'refresh'): void
   (e: 'openRequestDetails', preset?: OpsRequestDetailsPreset): void
   (e: 'openErrorDetails', kind: 'request' | 'upstream'): void
-  (e: 'exportErrors', kind: 'request' | 'upstream'): void
   (e: 'openSettings'): void
   (e: 'openAlertRules'): void
   (e: 'enterFullscreen'): void
@@ -215,10 +213,6 @@ function openDetails(preset?: OpsRequestDetailsPreset) {
 
 function openErrorDetails(kind: 'request' | 'upstream') {
   emit('openErrorDetails', kind)
-}
-
-function exportErrors(kind: 'request' | 'upstream') {
-  emit('exportErrors', kind)
 }
 
 // --- Threshold checking helpers ---
@@ -1390,19 +1384,9 @@ function handleToolbarRefresh() {
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.requestErrors') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.errors')" />
             </div>
-            <div class="flex items-center gap-2">
-              <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('request')">
-                {{ t('admin.ops.requestDetails.details') }}
-              </button>
-              <button
-                class="text-[10px] font-bold text-blue-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                :disabled="props.errorExporting"
-                @click="exportErrors('request')"
-              >
-                {{ props.errorExporting ? t('admin.ops.errorDetails.exporting') : t('admin.ops.errorDetails.export') }}
-              </button>
-            </div>
+            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('request')">
+              {{ t('admin.ops.requestDetails.details') }}
+            </button>
           </div>
           <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getRequestErrorRateThresholdLevel(errorRatePercent))">
             {{ errorRatePercent == null ? '-' : `${errorRatePercent.toFixed(2)}%` }}
@@ -1426,19 +1410,9 @@ function handleToolbarRefresh() {
               <span class="text-[10px] font-bold uppercase text-gray-400">{{ t('admin.ops.upstreamErrors') }}</span>
               <HelpTooltip v-if="!props.fullscreen" :content="t('admin.ops.tooltips.upstreamErrors')" />
             </div>
-            <div class="flex items-center gap-2">
-              <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('upstream')">
-                {{ t('admin.ops.requestDetails.details') }}
-              </button>
-              <button
-                class="text-[10px] font-bold text-blue-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                :disabled="props.errorExporting"
-                @click="exportErrors('upstream')"
-              >
-                {{ props.errorExporting ? t('admin.ops.errorDetails.exporting') : t('admin.ops.errorDetails.export') }}
-              </button>
-            </div>
+            <button v-if="!props.fullscreen" class="text-[10px] font-bold text-blue-500 hover:underline" type="button" @click="openErrorDetails('upstream')">
+              {{ t('admin.ops.requestDetails.details') }}
+            </button>
           </div>
           <div class="mt-2 text-3xl font-black" :class="getThresholdColorClass(getUpstreamErrorRateThresholdLevel(upstreamErrorRatePercent))">
             {{ upstreamErrorRatePercent == null ? '-' : `${upstreamErrorRatePercent.toFixed(2)}%` }}

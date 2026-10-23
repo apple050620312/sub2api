@@ -4,6 +4,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -82,6 +84,82 @@ func TestNextDynamic5hPressureStateUsesHysteresis(t *testing.T) {
 	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressureNormal, 0.85, true, cfg))
 	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressurePeak, 0.75, true, cfg))
 	require.Equal(t, Dynamic5hPressureNormal, nextDynamic5hPressureState(Dynamic5hPressurePeak, 0.69, true, cfg))
+}
+
+func TestDynamic5hAdminPressureThresholdsCanBeUpdated(t *testing.T) {
+	svc, ctx := newDynamic5hTestService(t, time.Now().UTC())
+	initial := svc.AdminPressureConfig(ctx)
+	require.Equal(t, 0.8, initial.PeakThreshold)
+	require.Equal(t, 0.7, initial.NormalThreshold)
+	require.Error(t, svc.SetAdminPressureConfig(ctx, Dynamic5hPressureThresholds{PeakThreshold: 0.6, NormalThreshold: 0.7}, 1))
+	require.NoError(t, svc.SetAdminPressureConfig(ctx, Dynamic5hPressureThresholds{PeakThreshold: 0.95, NormalThreshold: 0.82}, 1))
+	updated := svc.AdminPressureConfig(ctx)
+	require.Equal(t, 0.95, updated.PeakThreshold)
+	require.Equal(t, 0.82, updated.NormalThreshold)
+	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressureNormal, 0.95, true, svc.currentPressureConfig()))
+}
+
+type dynamic5hSettingsTestRepository struct {
+	thresholds Dynamic5hPressureThresholds
+	found      bool
+	actorID    int64
+	writeErr   error
+}
+
+func (r *dynamic5hSettingsTestRepository) GetDynamic5hPressureThresholds(context.Context) (Dynamic5hPressureThresholds, bool, error) {
+	return r.thresholds, r.found, nil
+}
+
+func (r *dynamic5hSettingsTestRepository) SetDynamic5hPressureThresholds(_ context.Context, thresholds Dynamic5hPressureThresholds, actorID int64) error {
+	if r.writeErr != nil {
+		return r.writeErr
+	}
+	r.thresholds, r.found, r.actorID = thresholds, true, actorID
+	return nil
+}
+
+func TestDynamic5hPressureThresholdsPersistAndReloadAcrossInstances(t *testing.T) {
+	now := time.Now().UTC()
+	writer, ctx := newDynamic5hTestService(t, now)
+	reader, _ := newDynamic5hTestService(t, now)
+	repo := &dynamic5hSettingsTestRepository{}
+	writer.settingsRepo, reader.settingsRepo = repo, repo
+	require.Equal(t, 0.8, reader.AdminPressureConfig(ctx).PeakThreshold)
+
+	thresholds := Dynamic5hPressureThresholds{PeakThreshold: 1.2, NormalThreshold: 1.05}
+	require.NoError(t, writer.SetAdminPressureConfig(ctx, thresholds, 7))
+	require.EqualValues(t, 7, repo.actorID)
+	restarted, _ := newDynamic5hTestService(t, now)
+	restarted.settingsRepo = repo
+	require.Equal(t, thresholds, restarted.AdminPressureConfig(ctx))
+
+	reader.now = func() time.Time { return now.Add(31 * time.Second) }
+	require.Equal(t, thresholds, reader.AdminPressureConfig(ctx))
+	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressureNormal, 1.2, true, reader.currentPressureConfig()))
+	require.Equal(t, Dynamic5hPressurePeak, nextDynamic5hPressureState(Dynamic5hPressurePeak, 1.05, true, reader.currentPressureConfig()))
+	require.Equal(t, Dynamic5hPressureNormal, nextDynamic5hPressureState(Dynamic5hPressurePeak, 1.04, true, reader.currentPressureConfig()))
+
+	repo.writeErr = errors.New("database unavailable")
+	require.Error(t, writer.SetAdminPressureConfig(ctx, Dynamic5hPressureThresholds{PeakThreshold: 0.8, NormalThreshold: 0.7}, 7))
+	require.Equal(t, thresholds, writer.AdminPressureConfig(ctx), "a failed save must keep the previous thresholds")
+}
+
+func TestDynamic5hPressureThresholdsRejectInvalidValues(t *testing.T) {
+	for _, thresholds := range []Dynamic5hPressureThresholds{
+		{PeakThreshold: 0, NormalThreshold: 0.9},
+		{PeakThreshold: 1, NormalThreshold: 0},
+		{PeakThreshold: 0.8, NormalThreshold: 0.9},
+		{PeakThreshold: math.NaN(), NormalThreshold: 0.9},
+		{PeakThreshold: math.Inf(1), NormalThreshold: 0.9},
+		{PeakThreshold: 1, NormalThreshold: math.NaN()},
+		{PeakThreshold: 1, NormalThreshold: math.Inf(-1)},
+	} {
+		svc, ctx := newDynamic5hTestService(t, time.Now().UTC())
+		repo := &dynamic5hSettingsTestRepository{}
+		svc.settingsRepo = repo
+		require.Error(t, svc.SetAdminPressureConfig(ctx, thresholds, 1))
+		require.False(t, repo.found, "invalid values must not be persisted")
+	}
 }
 
 func TestDynamic5hSevenDayExhaustionRemovesCapacityUntilRecovery(t *testing.T) {
@@ -172,7 +250,7 @@ func TestDynamic5hRuntimeUnavailableAccountsDoNotContribute(t *testing.T) {
 	}
 }
 
-func TestDynamic5hWindowForAccountSupportsOpenAIAndAnthropic(t *testing.T) {
+func TestDynamic5hWindowForAccountOnlySupportsOpenAI(t *testing.T) {
 	now := time.Now().UTC()
 	openAI := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Extra: map[string]any{
 		"codex_5h_used_percent": 35.0, "codex_5h_reset_at": now.Add(time.Hour).Format(time.RFC3339),
@@ -181,9 +259,19 @@ func TestDynamic5hWindowForAccountSupportsOpenAIAndAnthropic(t *testing.T) {
 	require.True(t, ok)
 	require.InDelta(t, 0.35, w.used, 1e-9)
 
-	reset := now.Add(2 * time.Hour)
-	anthropic := &Account{Platform: PlatformAnthropic, Status: StatusActive, Schedulable: true, SessionWindowEnd: &reset, Extra: map[string]any{"session_window_utilization": 0.4}}
-	w, ok = dynamic5hWindowForAccount(anthropic, now)
-	require.True(t, ok)
-	require.InDelta(t, 0.4, w.used, 1e-9)
+	for _, platform := range []string{PlatformAnthropic, PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo} {
+		t.Run(platform, func(t *testing.T) {
+			reset := now.Add(2 * time.Hour)
+			account := &Account{Platform: platform, Status: StatusActive, Schedulable: true, SessionWindowEnd: &reset, Extra: map[string]any{
+				"session_window_utilization":  0.4,
+				platform + "_5h_used_percent": 40.0,
+				platform + "_5h_reset_at":     reset.Format(time.RFC3339),
+			}}
+			window, included := dynamic5hWindowForAccount(account, now)
+			require.False(t, included)
+			require.Zero(t, window)
+			require.False(t, dynamic5hAccountQuotaEligible(account, now))
+			require.Equal(t, "unsupported_platform", dynamic5hAccountDiagnostic(account, now).Reason)
+		})
+	}
 }

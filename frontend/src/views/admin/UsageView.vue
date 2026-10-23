@@ -201,7 +201,7 @@ import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryM
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
 import OpsErrorDetailModal from '@/views/admin/ops/components/OpsErrorDetailModal.vue'
 import { listErrorLogs } from '@/api/admin/ops'
-import type { OpsErrorLog, OpsErrorListQueryParams } from '@/api/admin/ops'
+import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -815,28 +815,26 @@ const selectedErrorId = ref<number | null>(null)
 const toRFC3339 = (d: string | undefined, endOfDay = false): string | undefined =>
   d ? new Date(d + (endOfDay ? 'T23:59:59.999' : 'T00:00:00')).toISOString() : undefined
 
-const buildErrorListParams = (page: number, pageSize: number): OpsErrorListQueryParams => ({
-  page,
-  page_size: pageSize,
-  view: 'all',
-  start_time: toRFC3339(filters.value.start_date),
-  end_time: toRFC3339(filters.value.end_date, true),
-  user_id: filters.value.user_id ?? undefined,
-  api_key_id: filters.value.api_key_id ?? undefined,
-  account_id: filters.value.account_id ?? undefined,
-  group_id: filters.value.group_id ?? undefined,
-  model: filters.value.model || undefined,
-  phase: filters.value.error_phase || undefined,
-  category: filters.value.error_category || undefined,
-  status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
-  sort_by: errSortBy.value,
-  sort_order: errSortOrder.value,
-})
-
 const loadAdminErrors = async () => {
   errLoading.value = true
   try {
-    const resp = await listErrorLogs(buildErrorListParams(errPage.value, errPageSize.value))
+    const resp = await listErrorLogs({
+      page: errPage.value,
+      page_size: errPageSize.value,
+      view: 'all',
+      start_time: toRFC3339(filters.value.start_date),
+      end_time: toRFC3339(filters.value.end_date, true),
+      user_id: filters.value.user_id ?? undefined,
+      api_key_id: filters.value.api_key_id ?? undefined,
+      account_id: filters.value.account_id ?? undefined,
+      group_id: filters.value.group_id ?? undefined,
+      model: filters.value.model || undefined,
+      phase: filters.value.error_phase || undefined,
+      category: filters.value.error_category || undefined,
+      status_codes: filters.value.status_code != null ? String(filters.value.status_code) : undefined,
+      sort_by: errSortBy.value,
+      sort_order: errSortOrder.value,
+    })
     errRows.value = resp.items
     errTotal.value = resp.total
   } catch (error) {

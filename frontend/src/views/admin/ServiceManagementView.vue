@@ -17,6 +17,23 @@
       <div v-show="tab === 'usage'" class="space-y-8" role="tabpanel">
       <div v-if="loading && !overview" class="flex justify-center py-16"><LoadingSpinner /></div>
       <div v-else-if="overview" class="space-y-8">
+        <section class="card">
+          <div class="border-b border-gray-100 p-6 dark:border-dark-700">
+            <h2 class="font-semibold">尖峰压力门槛</h2>
+            <p class="mt-2 text-sm text-gray-500">管理员可调整进入尖峰与离开尖峰的压力百分比。离开门槛必须小于或等于进入门槛。</p>
+          </div>
+          <form class="grid gap-4 p-6 sm:grid-cols-[1fr_1fr_auto] sm:items-end" @submit.prevent="savePressureConfig">
+            <label class="block text-sm text-gray-600 dark:text-gray-300">
+              <span class="mb-2 block">进入尖峰门槛 (%)</span>
+              <input v-model.number="pressureConfig.peak" type="number" min="0.1" step="0.1" class="input w-full" required />
+            </label>
+            <label class="block text-sm text-gray-600 dark:text-gray-300">
+              <span class="mb-2 block">离开尖峰门槛 (%)</span>
+              <input v-model.number="pressureConfig.normal" type="number" min="0.1" step="0.1" class="input w-full" required />
+            </label>
+            <button class="btn btn-primary" type="submit" :disabled="configSaving">{{ configSaving ? '保存中…' : '保存门槛' }}</button>
+          </form>
+        </section>
         <div v-if="!overview.pool.enabled" class="rounded-lg border border-gray-200 bg-white p-5 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300">{{ t('admin.pressure5hPage.disabled') }}</div>
         <div v-else class="space-y-8">
           <section class="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -64,7 +81,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import { useAppStore } from '@/stores/app'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ServiceManagementPanel from '@/components/service/ServiceManagementPanel.vue'
-import { getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hUserPolicy } from '@/api/admin/dashboard'
+import { getDynamic5hPressureConfig, getDynamic5hPressureOverview, resetDynamic5hUser, setDynamic5hPressureConfig, setDynamic5hUserPolicy } from '@/api/admin/dashboard'
 import type { Dynamic5hAdminOverview, Dynamic5hAdminUserStatus } from '@/types'
 
 const { t } = useI18n()
@@ -79,6 +96,10 @@ const app = useAppStore()
 const columns = [{ key: 'email', label: '用户邮箱' }, { key: 'usage', label: '五小时用量' }, { key: 'remaining_percent', label: '剩余' }, { key: 'recover_at', label: '恢复时间' }, { key: 'actions', label: '操作' }]
 const confirmation = ref<{ user: Dynamic5hAdminUserStatus; action: 'exempt' | 'reset'; title: string; message: string } | null>(null)
 const saving = ref(false)
+const configSaving = ref(false)
+const pressureConfig = ref({ peak: 100, normal: 90 })
+const savedPressureConfig = ref({ peak: 100, normal: 90 })
+const pressureConfigDirty = computed(() => pressureConfig.value.peak !== savedPressureConfig.value.peak || pressureConfig.value.normal !== savedPressureConfig.value.normal)
 let timer: ReturnType<typeof setInterval> | undefined
 
 const metrics = computed(() => overview.value ? [
@@ -99,8 +120,29 @@ const load = async () => {
   if (loading.value) return
   loading.value = true
   try {
-    overview.value = await getDynamic5hPressureOverview()
+    const [nextOverview, nextConfig] = await Promise.all([getDynamic5hPressureOverview(), getDynamic5hPressureConfig()])
+    overview.value = nextOverview
+    const replaceDraft = !pressureConfigDirty.value && !configSaving.value
+    savedPressureConfig.value = { peak: nextConfig.peak_threshold * 100, normal: nextConfig.normal_threshold * 100 }
+    if (replaceDraft) pressureConfig.value = { ...savedPressureConfig.value }
   } catch { app.showError('加载服务状态失败') } finally { loading.value = false }
+}
+async function savePressureConfig() {
+  if (configSaving.value) return
+  const peak = Number(pressureConfig.value.peak) / 100
+  const normal = Number(pressureConfig.value.normal) / 100
+  if (!(Number.isFinite(peak) && Number.isFinite(normal) && normal > 0 && normal <= peak)) {
+    app.showError('请确保 0 < 离开门槛 ≤ 进入门槛')
+    return
+  }
+  configSaving.value = true
+  try {
+    const saved = await setDynamic5hPressureConfig({ peak_threshold: peak, normal_threshold: normal })
+    pressureConfig.value = { peak: saved.peak_threshold * 100, normal: saved.normal_threshold * 100 }
+    savedPressureConfig.value = { ...pressureConfig.value }
+    await load()
+    app.showSuccess('压力门槛已保存')
+  } catch { app.showError('保存压力门槛失败') } finally { configSaving.value = false }
 }
 function askAction(user: Dynamic5hAdminUserStatus, action: 'exempt' | 'reset') {
   const title = action === 'reset' ? '重置五小时用量' : user.exempt ? '取消限流豁免' : '豁免五小时限流'

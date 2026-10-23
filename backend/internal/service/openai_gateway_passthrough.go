@@ -1657,12 +1657,7 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 			return statusCode, false
 		}
 		fallthrough
-	case http.StatusUnauthorized, http.StatusTooManyRequests, 529,
-		http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable,
-		http.StatusGatewayTimeout, 520, 521, 522, 523, 524:
-		if statusCode == http.StatusBadGateway && !isOpenAITransientStreamTerminalFailure(payload, message) {
-			return statusCode, false
-		}
+	case http.StatusUnauthorized, http.StatusTooManyRequests, 529:
 		ctx := context.Background()
 		if c != nil && c.Request != nil {
 			ctx = c.Request.Context()
@@ -1681,12 +1676,6 @@ func (s *OpenAIGatewayService) handleOpenAIStreamTerminalAccountSideEffects(
 	default:
 		return statusCode, false
 	}
-}
-
-func isOpenAITransientStreamTerminalFailure(payload []byte, message string) bool {
-	return isOpenAIRequestScopedCapacityShed(message, payload) ||
-		isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) ||
-		openAIStreamErrorEventShouldFailover(payload, message)
 }
 
 func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
@@ -1716,7 +1705,6 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 	kind string,
 	payload []byte,
 	message string,
-	firstOutputEventType ...string,
 ) string {
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
@@ -1748,9 +1736,6 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 			event.Platform = account.Platform
 			event.AccountID = account.ID
 			event.AccountName = account.Name
-		}
-		if len(firstOutputEventType) > 0 {
-			event.FirstOutputEventType = truncateString(strings.TrimSpace(firstOutputEventType[0]), 128)
 		}
 		appendOpsUpstreamError(c, event)
 	}
@@ -1925,7 +1910,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	capacityFailoverSuppressedLogged := false
 	failedMessage := ""
 	clientOutputStarted := false
-	firstOutputEventType := ""
 	codexFailureTerminal := account != nil && account.Platform == PlatformOpenAI
 	failureDelivered := false
 	suppressCurrentEvent := false
@@ -2048,7 +2032,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			suppressCurrentEvent = codexFailureTerminal && (eventType == "error" || (sawBareError && !sawResponseFailed && eventType != "response.failed"))
 		}
 		lineStartsClientOutput := false
-		lineOutputEventType := ""
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
@@ -2143,7 +2126,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					if eventType == "response.failed" {
 						// The stream cannot be replayed after semantic output. Preserve the
 						// terminal event, while making the upstream failure queryable.
-						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "stream_failed", dataBytes, failedMessage, firstOutputEventType)
+						s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
 					}
 				}
 				if !outputStarted {
@@ -2203,9 +2186,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				line = "data: " + string(sanitizedData)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
-			if lineStartsClientOutput {
-				lineOutputEventType = eventType
-			}
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
 				semanticOutputSeen = true
 			}
@@ -2253,9 +2233,6 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
 				clientOutputStarted = true
-				if firstOutputEventType == "" && lineOutputEventType != "" {
-					firstOutputEventType = lineOutputEventType
-				}
 				flushPending = true
 				if line == "" {
 					flushPendingOutput()

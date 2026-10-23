@@ -31,12 +31,9 @@ func WithOpenAIGuardianParentAffinity(ctx context.Context, c *gin.Context, body 
 	}
 
 	headerMetadata := c.GetHeader(codexTurnMetadataHeader)
-	bodyView := openAIRequestPayloadView(body)
-	bodyMetadata := bodyView.Get("client_metadata.x-codex-turn-metadata").String()
-	bodyParentID := strings.TrimSpace(bodyView.Get("client_metadata." + codexParentThreadIDHeader).String())
+	bodyMetadata := openAIRequestPayloadView(body).Get("client_metadata.x-codex-turn-metadata").String()
 	if !hasUnambiguousOpenAICodexReviewSubagent(
 		c.GetHeader(openAISubagentHeader),
-		bodyView.Get("client_metadata."+openAISubagentHeader).String(),
 		codexSubagentKindFromMetadata(headerMetadata),
 		codexSubagentKindFromMetadata(bodyMetadata),
 	) {
@@ -46,8 +43,6 @@ func WithOpenAIGuardianParentAffinity(ctx context.Context, c *gin.Context, body 
 	parentID := ""
 	for _, candidate := range []string{
 		strings.TrimSpace(c.GetHeader(codexParentThreadIDHeader)),
-		strings.TrimSpace(bodyView.Get("client_metadata.parent_thread_id").String()),
-		bodyParentID,
 		codexParentThreadIDFromMetadata(headerMetadata),
 		codexParentThreadIDFromMetadata(bodyMetadata),
 	} {

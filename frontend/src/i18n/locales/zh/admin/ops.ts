@@ -292,10 +292,6 @@ export default {
       errorDetails: {
         upstreamErrors: '上游错误',
         requestErrors: '请求错误',
-        export: '导出 Excel',
-        exporting: '导出中…',
-        exportSuccess: '错误记录导出成功',
-        exportFailed: '错误记录导出失败，请重试',
         unresolved: '未解决',
         resolved: '已解决',
         viewErrors: '错误',
@@ -317,10 +313,6 @@ export default {
         },
         total: '总计：',
         searchPlaceholder: '搜索 request_id / client_request_id / message'
-      },
-      errorExport: {
-        severity: '严重程度',
-        clientRequestId: '客户端请求 ID'
       },
       // Error Detail Modal
       errorDetail: {

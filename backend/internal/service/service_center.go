@@ -24,11 +24,10 @@ import (
 )
 
 const (
-	onboardingOwnerExtraKey          = "onboarding_owner_user_id"
-	onboardingPublicFallbackExtraKey = "onboarding_public_fallback"
-	onboardingManagedNotes           = "onboarding-managed"
-	onboardingStateTTL               = 10 * time.Minute
-	onboardingPausedExtraKey         = "onboarding_user_paused"
+	onboardingOwnerExtraKey  = "onboarding_owner_user_id"
+	onboardingManagedNotes   = "onboarding-managed"
+	onboardingStateTTL       = 10 * time.Minute
+	onboardingPausedExtraKey = "onboarding_user_paused"
 )
 
 var (
@@ -444,17 +443,6 @@ func accountOwnerID(account Account) int64 {
 
 func onboardingAccountBelongsToUser(account *Account, userID int64) bool {
 	return account != nil && userID > 0 && accountOwnerID(*account) == userID
-}
-
-func partitionOnboardingAccounts(accounts []*Account, userID int64) (owned, public []*Account) {
-	for _, account := range accounts {
-		if onboardingAccountBelongsToUser(account, userID) {
-			owned = append(owned, account)
-		} else if account != nil {
-			public = append(public, account)
-		}
-	}
-	return owned, public
 }
 
 func (s *ServiceCenterService) listUserAccounts(ctx context.Context, userID int64) ([]Account, int, error) {
@@ -1003,7 +991,7 @@ func (s *ServiceCenterService) UnbindAccount(ctx context.Context, accountID int6
 		if err != nil || current == nil || accountOwnerID(*current) != owner {
 			return ErrOnboardingAccountMissing
 		}
-		return s.admin.UpdateAccountExtra(ctx, accountID, map[string]any{onboardingOwnerExtraKey: nil, onboardingPublicFallbackExtraKey: nil, "onboarding_owner_source": nil})
+		return s.admin.UpdateAccountExtra(ctx, accountID, map[string]any{onboardingOwnerExtraKey: nil, "onboarding_owner_source": nil})
 	})
 }
 

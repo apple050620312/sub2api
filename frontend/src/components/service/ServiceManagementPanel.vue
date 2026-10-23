@@ -2,7 +2,7 @@
   <div class="space-y-8">
     <section v-show="panel === 'all' || panel === 'accounts'" class="card overflow-visible">
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 p-6 dark:border-dark-700">
-        <div><h2 class="text-lg font-semibold">用户与账号</h2><p class="mt-1 text-sm text-gray-500">账号优先服务所属用户，忙碌时自动回退公共池。</p></div>
+        <div><h2 class="text-lg font-semibold">用户与账号</h2><p class="mt-1 text-sm text-gray-500">所有账号统一由号池调度，所属关系仅用于服务中心管理。</p></div>
         <button class="btn btn-secondary" :disabled="loading" @click="load">刷新</button>
       </div>
       <div class="p-6"><input v-model="search" class="input w-full sm:max-w-md" aria-label="搜索用户或账号" placeholder="搜索用户邮箱、Discord 或 GPT 账号名称" /></div>

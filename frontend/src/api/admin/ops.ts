@@ -1124,16 +1124,13 @@ export type OpsErrorListQueryParams = {
 }
 
 // Legacy unified endpoints
-export async function listErrorLogs(
-  params: OpsErrorListQueryParams,
-  options: OpsRequestOptions = {}
-): Promise<OpsErrorLogsResponse> {
-  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/errors', { params, signal: options.signal })
+export async function listErrorLogs(params: OpsErrorListQueryParams): Promise<OpsErrorLogsResponse> {
+  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/errors', { params })
   return data
 }
 
-export async function getErrorLogDetail(id: number, options: OpsRequestOptions = {}): Promise<OpsErrorDetail> {
-  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/errors/${id}`, { signal: options.signal })
+export async function getErrorLogDetail(id: number): Promise<OpsErrorDetail> {
+  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/errors/${id}`)
   return data
 }
 
@@ -1142,29 +1139,23 @@ export async function updateErrorResolved(errorId: number, resolved: boolean): P
 }
 
 // New split endpoints
-export async function listRequestErrors(
-  params: OpsErrorListQueryParams,
-  options: OpsRequestOptions = {}
-): Promise<OpsErrorLogsResponse> {
-  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/request-errors', { params, signal: options.signal })
+export async function listRequestErrors(params: OpsErrorListQueryParams): Promise<OpsErrorLogsResponse> {
+  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/request-errors', { params })
   return data
 }
 
-export async function listUpstreamErrors(
-  params: OpsErrorListQueryParams,
-  options: OpsRequestOptions = {}
-): Promise<OpsErrorLogsResponse> {
-  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/upstream-errors', { params, signal: options.signal })
+export async function listUpstreamErrors(params: OpsErrorListQueryParams): Promise<OpsErrorLogsResponse> {
+  const { data } = await apiClient.get<OpsErrorLogsResponse>('/admin/ops/upstream-errors', { params })
   return data
 }
 
-export async function getRequestErrorDetail(id: number, options: OpsRequestOptions = {}): Promise<OpsErrorDetail> {
-  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/request-errors/${id}`, { signal: options.signal })
+export async function getRequestErrorDetail(id: number): Promise<OpsErrorDetail> {
+  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/request-errors/${id}`)
   return data
 }
 
-export async function getUpstreamErrorDetail(id: number, options: OpsRequestOptions = {}): Promise<OpsErrorDetail> {
-  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/upstream-errors/${id}`, { signal: options.signal })
+export async function getUpstreamErrorDetail(id: number): Promise<OpsErrorDetail> {
+  const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/upstream-errors/${id}`)
   return data
 }
 

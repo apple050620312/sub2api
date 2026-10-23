@@ -6,9 +6,6 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/service/__tests__/ResetMonitorSettings.spec.ts \
 	src/components/service/__tests__/UsageWindowBar.spec.ts \
 	src/utils/__tests__/serviceCenter.spec.ts \
-	src/utils/__tests__/opsErrorExport.spec.ts \
-	src/views/admin/__tests__/UsageView.spec.ts \
-	src/components/admin/usage/__tests__/UsageFilters.spec.ts \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
 	src/api/__tests__/client.spec.ts \
 	src/api/__tests__/tokenRefresh.spec.ts \

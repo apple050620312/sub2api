@@ -56,6 +56,16 @@ export async function getDynamic5hPressureOverview(): Promise<Dynamic5hAdminOver
   return data
 }
 
+export async function getDynamic5hPressureConfig(): Promise<Pick<Dynamic5hPressureStatus, 'peak_threshold' | 'normal_threshold'>> {
+  const { data } = await apiClient.get<Pick<Dynamic5hPressureStatus, 'peak_threshold' | 'normal_threshold'>>('/admin/dashboard/5h-pressure/config')
+  return data
+}
+
+export async function setDynamic5hPressureConfig(config: { peak_threshold: number; normal_threshold: number }) {
+  const { data } = await apiClient.put('/admin/dashboard/5h-pressure/config', config)
+  return data as Pick<Dynamic5hPressureStatus, 'peak_threshold' | 'normal_threshold'>
+}
+
 export async function setDynamic5hUserPolicy(userId: number, policy: { exempt: boolean }) {
   const { data } = await apiClient.put(`/admin/dashboard/5h-pressure/users/${userId}/policy`, policy)
   return data
@@ -358,6 +368,8 @@ export const dashboardAPI = {
   getStats,
   getDynamic5hPressure,
   getDynamic5hPressureOverview,
+  getDynamic5hPressureConfig,
+  setDynamic5hPressureConfig,
   setDynamic5hUserPolicy,
   resetDynamic5hUser,
   getRealtimeMetrics,

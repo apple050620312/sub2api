@@ -107,6 +107,13 @@ type Dynamic5hUserPolicy struct {
 	Exempt bool `json:"exempt"`
 }
 
+// Dynamic5hPressureThresholds are the administrator-controlled hysteresis
+// thresholds for entering and leaving peak mode. Values are pressure ratios.
+type Dynamic5hPressureThresholds struct {
+	PeakThreshold   float64 `json:"peak_threshold"`
+	NormalThreshold float64 `json:"normal_threshold"`
+}
+
 type Dynamic5hAuditLog struct {
 	ID          int64                `json:"id"`
 	UserID      int64                `json:"user_id"`
@@ -127,6 +134,14 @@ type Dynamic5hPolicyRepository interface {
 	UpsertUserPolicy(context.Context, int64, Dynamic5hUserPolicy, int64) error
 	RecordUsageReset(context.Context, int64, int64, float64, float64) error
 	ListAuditLogs(context.Context, int) ([]Dynamic5hAuditLog, error)
+}
+
+// Dynamic5hPressureSettingsRepository persists the pool pressure thresholds.
+// It is kept separate from the user policy repository so deployments that use
+// an alternative policy store can still use the built-in configuration values.
+type Dynamic5hPressureSettingsRepository interface {
+	GetDynamic5hPressureThresholds(context.Context) (Dynamic5hPressureThresholds, bool, error)
+	SetDynamic5hPressureThresholds(context.Context, Dynamic5hPressureThresholds, int64) error
 }
 
 type Dynamic5hAccountDiagnostic struct {
@@ -165,23 +180,29 @@ type Dynamic5hPressureCache interface {
 }
 
 type Dynamic5hPressureService struct {
-	accountRepo AccountRepository
-	userRepo    UserRepository
-	policyRepo  Dynamic5hPolicyRepository
-	quotaRepo   Subscription5hQuotaRepository
-	cache       Dynamic5hPressureCache
-	cfg         config.Dynamic5hPressureConfig
+	accountRepo  AccountRepository
+	userRepo     UserRepository
+	policyRepo   Dynamic5hPolicyRepository
+	settingsRepo Dynamic5hPressureSettingsRepository
+	quotaRepo    Subscription5hQuotaRepository
+	cache        Dynamic5hPressureCache
+	cfg          config.Dynamic5hPressureConfig
 
-	mu              sync.RWMutex
-	status          Dynamic5hPressureStatus
-	refreshing      bool
-	lastAttempt     time.Time
-	now             func() time.Time
-	policyMu        sync.Mutex
-	policies        map[int64]Dynamic5hUserPolicy
-	policyLoadedAt  time.Time
-	policyAttemptAt time.Time
-	metrics         dynamic5hMetrics
+	mu                 sync.RWMutex
+	status             Dynamic5hPressureStatus
+	refreshing         bool
+	lastAttempt        time.Time
+	now                func() time.Time
+	policyMu           sync.Mutex
+	policies           map[int64]Dynamic5hUserPolicy
+	policyLoadedAt     time.Time
+	policyAttemptAt    time.Time
+	thresholdMu        sync.RWMutex
+	thresholdsLoaded   bool
+	thresholdsLoadedAt time.Time
+	peakThreshold      float64
+	normalThreshold    float64
+	metrics            dynamic5hMetrics
 }
 
 func NewDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hPressureCache, cfg *config.Config, userRepo ...UserRepository) *Dynamic5hPressureService {
@@ -190,7 +211,10 @@ func NewDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hP
 		pressureCfg = cfg.Gateway.Dynamic5hPressure
 	}
 	pressureCfg = normalizeDynamic5hPressureConfig(pressureCfg)
-	s := &Dynamic5hPressureService{accountRepo: accountRepo, cache: cache, cfg: pressureCfg, now: time.Now}
+	s := &Dynamic5hPressureService{
+		accountRepo: accountRepo, cache: cache, cfg: pressureCfg, now: time.Now,
+		peakThreshold: pressureCfg.PeakThreshold, normalThreshold: pressureCfg.NormalThreshold,
+	}
 	if len(userRepo) > 0 {
 		s.userRepo = userRepo[0]
 	}
@@ -201,6 +225,9 @@ func NewDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hP
 func ProvideDynamic5hPressureService(accountRepo AccountRepository, cache Dynamic5hPressureCache, cfg *config.Config, userRepo UserRepository, policyRepo Dynamic5hPolicyRepository) *Dynamic5hPressureService {
 	svc := NewDynamic5hPressureService(accountRepo, cache, cfg, userRepo)
 	svc.policyRepo = policyRepo
+	if settingsRepo, ok := policyRepo.(Dynamic5hPressureSettingsRepository); ok {
+		svc.settingsRepo = settingsRepo
+	}
 	svc.quotaRepo, _ = policyRepo.(Subscription5hQuotaRepository)
 	return svc
 }
@@ -219,6 +246,91 @@ func normalizeDynamic5hPressureConfig(c config.Dynamic5hPressureConfig) config.D
 		c.EWMAAlpha = 0.35
 	}
 	return c
+}
+
+func (s *Dynamic5hPressureService) currentPressureConfig() config.Dynamic5hPressureConfig {
+	if s == nil {
+		return config.Dynamic5hPressureConfig{}
+	}
+	s.thresholdMu.RLock()
+	peak, normal := s.peakThreshold, s.normalThreshold
+	s.thresholdMu.RUnlock()
+	c := s.cfg
+	if peak > 0 {
+		c.PeakThreshold = peak
+	}
+	if normal > 0 {
+		c.NormalThreshold = normal
+	}
+	return normalizeDynamic5hPressureConfig(c)
+}
+
+func validateDynamic5hPressureThresholds(thresholds Dynamic5hPressureThresholds) error {
+	if math.IsNaN(thresholds.PeakThreshold) || math.IsInf(thresholds.PeakThreshold, 0) ||
+		math.IsNaN(thresholds.NormalThreshold) || math.IsInf(thresholds.NormalThreshold, 0) ||
+		thresholds.NormalThreshold <= 0 || thresholds.PeakThreshold <= 0 ||
+		thresholds.NormalThreshold > thresholds.PeakThreshold {
+		return fmt.Errorf("dynamic 5h thresholds must satisfy 0 < normal_threshold <= peak_threshold")
+	}
+	return nil
+}
+
+func (s *Dynamic5hPressureService) loadPersistedPressureThresholds(ctx context.Context) error {
+	if s == nil || s.settingsRepo == nil {
+		return nil
+	}
+	s.thresholdMu.Lock()
+	if s.thresholdsLoaded && s.now().Sub(s.thresholdsLoadedAt) >= 0 && s.now().Sub(s.thresholdsLoadedAt) < 30*time.Second {
+		s.thresholdMu.Unlock()
+		return nil
+	}
+	thresholds, found, err := s.settingsRepo.GetDynamic5hPressureThresholds(ctx)
+	if err != nil {
+		s.thresholdMu.Unlock()
+		return err
+	}
+	if found && validateDynamic5hPressureThresholds(thresholds) == nil {
+		s.peakThreshold = thresholds.PeakThreshold
+		s.normalThreshold = thresholds.NormalThreshold
+	}
+	s.thresholdsLoaded = true
+	s.thresholdsLoadedAt = s.now()
+	s.thresholdMu.Unlock()
+	return nil
+}
+
+// AdminPressureConfig returns the effective thresholds used by the pressure
+// state machine. Persisted values take precedence over YAML defaults.
+func (s *Dynamic5hPressureService) AdminPressureConfig(ctx context.Context) Dynamic5hPressureThresholds {
+	if s == nil {
+		return Dynamic5hPressureThresholds{}
+	}
+	_ = s.loadPersistedPressureThresholds(ctx)
+	c := s.currentPressureConfig()
+	return Dynamic5hPressureThresholds{PeakThreshold: c.PeakThreshold, NormalThreshold: c.NormalThreshold}
+}
+
+// SetAdminPressureConfig validates and persists new pressure thresholds before
+// making them active in this process.
+func (s *Dynamic5hPressureService) SetAdminPressureConfig(ctx context.Context, thresholds Dynamic5hPressureThresholds, actorID int64) error {
+	if s == nil {
+		return fmt.Errorf("dynamic 5h pressure service unavailable")
+	}
+	if err := validateDynamic5hPressureThresholds(thresholds); err != nil {
+		return err
+	}
+	if s.settingsRepo != nil {
+		if err := s.settingsRepo.SetDynamic5hPressureThresholds(ctx, thresholds, actorID); err != nil {
+			return err
+		}
+	}
+	s.thresholdMu.Lock()
+	s.peakThreshold = thresholds.PeakThreshold
+	s.normalThreshold = thresholds.NormalThreshold
+	s.thresholdsLoaded = true
+	s.thresholdsLoadedAt = s.now()
+	s.thresholdMu.Unlock()
+	return nil
 }
 
 func (s *Dynamic5hPressureService) MaybeRefresh() {
@@ -250,7 +362,11 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 	if s == nil {
 		return Dynamic5hPressureStatus{State: Dynamic5hPressureNormal}, nil
 	}
-	if !s.cfg.Enabled {
+	if err := s.loadPersistedPressureThresholds(ctx); err != nil {
+		slog.Warn("dynamic 5h pressure thresholds could not be loaded; using current values", "error", err)
+	}
+	pressureCfg := s.currentPressureConfig()
+	if !pressureCfg.Enabled {
 		status := Dynamic5hPressureStatus{State: Dynamic5hPressureNormal, EvaluatedAt: s.now().UTC()}
 		s.storeStatus(ctx, status)
 		return status, nil
@@ -288,13 +404,13 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 	previous := s.loadStatus(ctx)
 	pressure := raw
 	if previous.DataAvailable {
-		pressure = s.cfg.EWMAAlpha*raw + (1-s.cfg.EWMAAlpha)*previous.Pressure
+		pressure = pressureCfg.EWMAAlpha*raw + (1-pressureCfg.EWMAAlpha)*previous.Pressure
 	}
 	if math.IsNaN(pressure) || math.IsInf(pressure, 0) {
 		pressure = 0
 	}
 	pressure = math.Min(100, pressure)
-	state := nextDynamic5hPressureState(previous.State, pressure, len(windows) > 0, s.cfg)
+	state := nextDynamic5hPressureState(previous.State, pressure, len(windows) > 0, pressureCfg)
 	status := Dynamic5hPressureStatus{
 		Enabled: true, DataAvailable: len(windows) > 0,
 		Pressure: pressure, RawPressure: raw, State: state, PeakActive: state == Dynamic5hPressurePeak,
@@ -302,7 +418,7 @@ func (s *Dynamic5hPressureService) Refresh(ctx context.Context) (Dynamic5hPressu
 		BurnRatePerHour: burnPerHour, ProjectedDemand: projected,
 		EvaluatedAt:                now,
 		CapacityRecoveringNextHour: recoveringNextHour, ExcludedAccountCount: len(accounts) - len(windows), NextResetAt: nextResetAt,
-		PeakThreshold: s.cfg.PeakThreshold, NormalThreshold: s.cfg.NormalThreshold,
+		PeakThreshold: pressureCfg.PeakThreshold, NormalThreshold: pressureCfg.NormalThreshold,
 	}
 	s.storeStatus(ctx, status)
 	return status, nil
@@ -375,6 +491,9 @@ func dynamic5hWindowDataForAccount(a *Account, now time.Time) (dynamic5hAccountW
 		return dynamic5hAccountWindow{}, false
 	}
 	platform := strings.ToLower(strings.TrimSpace(a.Platform))
+	if platform != PlatformOpenAI {
+		return dynamic5hAccountWindow{}, false
+	}
 	switch platform {
 	case PlatformOpenAI:
 		if !openAICodexSnapshotIdentityTrusted(a) {
@@ -392,19 +511,6 @@ func dynamic5hWindowDataForAccount(a *Account, now time.Time) (dynamic5hAccountW
 			return dynamic5hAccountWindow{used: 0, resetAt: now.Add(dynamic5hWindow)}, true
 		}
 		return dynamic5hAccountWindow{used: used / 100, resetAt: resetAt}, true
-	case PlatformAnthropic:
-		raw, ok := a.Extra["session_window_utilization"]
-		if !ok || a.SessionWindowEnd == nil || !a.SessionWindowEnd.After(now) {
-			return dynamic5hAccountWindow{}, false
-		}
-		return dynamic5hAccountWindow{used: utilizationAsPercent(raw) / 100, resetAt: *a.SessionWindowEnd}, true
-	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
-		used, ok := resolveAccountExtraNumber(a.Extra, platform+"_5h_used_percent")
-		reset := parseSchedulingResetAt(a.Extra[platform+"_5h_reset_at"])
-		if !ok || reset == nil || !reset.After(now) {
-			return dynamic5hAccountWindow{}, false
-		}
-		return dynamic5hAccountWindow{used: used / 100, resetAt: *reset}, true
 	default:
 		return dynamic5hAccountWindow{}, false
 	}
@@ -421,25 +527,19 @@ func dynamic5hAccountQuotaEligible(a *Account, now time.Time) bool {
 		return false
 	}
 	platform := strings.ToLower(strings.TrimSpace(a.Platform))
+	if platform != PlatformOpenAI {
+		return false
+	}
 	var usedKeys, resetKeys []string
 	switch platform {
 	case PlatformOpenAI:
 		usedKeys = []string{"codex_7d_used_percent"}
 		resetKeys = []string{"codex_7d_reset_at"}
-	case PlatformAnthropic:
-		usedKeys = []string{"passive_usage_7d_utilization"}
-		resetKeys = []string{"passive_usage_7d_reset"}
-	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
-		usedKeys = []string{platform + "_7d_used_percent"}
-		resetKeys = []string{platform + "_7d_reset_at"}
 	}
 	for i, key := range usedKeys {
 		used, ok := resolveAccountExtraNumber(a.Extra, key)
 		if !ok {
 			continue
-		}
-		if platform == PlatformAnthropic && used <= 1 {
-			used *= 100
 		}
 		reset := parseSchedulingResetAt(a.Extra[resetKeys[i]])
 		if used >= 100 && (reset == nil || reset.After(now)) {
@@ -544,28 +644,23 @@ func (s *Dynamic5hPressureService) AdminOverview(ctx context.Context) Dynamic5hA
 func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagnostic {
 	d := Dynamic5hAccountDiagnostic{AccountID: a.ID, Name: a.Name, Platform: a.Platform}
 	platform := strings.ToLower(strings.TrimSpace(a.Platform))
+	if platform != PlatformOpenAI {
+		d.Reason = "unsupported_platform"
+		return d
+	}
 	var fiveUsedKey, fiveResetKey, sevenUsedKey, sevenResetKey string
 	openAIFiveHourReset := false
 	switch platform {
 	case PlatformOpenAI:
 		fiveUsedKey, fiveResetKey, sevenUsedKey, sevenResetKey = "codex_5h_used_percent", "codex_5h_reset_at", "codex_7d_used_percent", "codex_7d_reset_at"
-	case PlatformAnthropic:
-		fiveUsedKey, sevenUsedKey, sevenResetKey = "session_window_utilization", "passive_usage_7d_utilization", "passive_usage_7d_reset"
-	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
-		fiveUsedKey, fiveResetKey, sevenUsedKey, sevenResetKey = platform+"_5h_used_percent", platform+"_5h_reset_at", platform+"_7d_used_percent", platform+"_7d_reset_at"
 	default:
 		d.Reason = "unsupported_platform"
 		return d
 	}
 	if value, ok := resolveAccountExtraNumber(a.Extra, fiveUsedKey); ok {
-		if platform == PlatformAnthropic && value <= 1 {
-			value *= 100
-		}
 		d.FiveHourUsed = &value
 	}
 	switch platform {
-	case PlatformAnthropic:
-		d.FiveHourReset = a.SessionWindowEnd
 	case PlatformOpenAI:
 		if resetAt, ok := openAICodexWindowResetAt(a.Extra, "5h"); ok {
 			d.FiveHourReset = &resetAt
@@ -582,9 +677,6 @@ func dynamic5hAccountDiagnostic(a *Account, now time.Time) Dynamic5hAccountDiagn
 		d.FiveHourReset = nil
 	}
 	if value, ok := resolveAccountExtraNumber(a.Extra, sevenUsedKey); ok {
-		if platform == PlatformAnthropic && value <= 1 {
-			value *= 100
-		}
 		d.SevenDayUsed = &value
 	}
 	d.SevenDayReset = parseSchedulingResetAt(a.Extra[sevenResetKey])

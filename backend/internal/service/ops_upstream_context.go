@@ -68,7 +68,6 @@ const (
 	OpsClientBusinessLimitedReasonLocalFeatureGate        = "local_feature_gate"
 	OpsClientBusinessLimitedReasonLocalPolicyDenied       = "local_policy_denied"
 	OpsClientBusinessLimitedReasonLocalModelConfiguration = "local_model_configuration"
-	OpsClientBusinessLimitedReasonDynamic5hPressure       = "dynamic_5h_pressure_limit"
 )
 
 func MarkResponseCommitted(c *gin.Context) { c.Set(ResponseCommittedKey, true) }
@@ -460,10 +459,9 @@ type OpsUpstreamErrorEvent struct {
 	Kind string `json:"kind,omitempty"`
 	// Stage/Scope/Reason distinguish credential acquisition from inference
 	// without overloading upstream_status_code with a synthetic HTTP status.
-	Stage                string `json:"stage,omitempty"`
-	Scope                string `json:"scope,omitempty"`
-	Reason               string `json:"reason,omitempty"`
-	FirstOutputEventType string `json:"first_output_event_type,omitempty"`
+	Stage  string `json:"stage,omitempty"`
+	Scope  string `json:"scope,omitempty"`
+	Reason string `json:"reason,omitempty"`
 
 	Message string `json:"message,omitempty"`
 	Detail  string `json:"detail,omitempty"`

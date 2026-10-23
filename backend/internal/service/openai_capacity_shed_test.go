@@ -156,8 +156,6 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 		{`{"type":"response.queued","response":{"id":"resp_1","status":"queued"}}`, "response.queued", false},
 		{`{"type":"response.metadata","response_id":"resp_1","metadata":{"openai_chatgpt_moderation_metadata":{"prompt":{}}}}`, "response.metadata", false},
 		{`{"type":"response.in_progress","response":{"id":"resp_1"}}`, "response.in_progress", false},
-		{`{"type":"response.queued","response":{"id":"resp_1"}}`, "response.queued", false},
-		{`{"type":"response.metadata","response":{"id":"resp_1","metadata":{"moderation":"pending"}}}`, "response.metadata", false},
 		{`{"type":"keepalive"}`, "keepalive", false},
 		{`{"type":"unknown_event"}`, "unknown_event", true},
 		{`{"type":"response.output_item.added","item":{"type":"reasoning","summary":[]}}`, "response.output_item.added", false},
@@ -177,12 +175,6 @@ func TestOpenAIStreamMetadataAndKeepaliveBeforeOverloadFailOver(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	largeMetadata := strings.Repeat("x", 16*1024)
 	stream := strings.Join([]string{
-		"event: response.queued",
-		`data: {"type":"response.queued","response":{"id":"resp_1"}}`,
-		"",
-		"event: response.metadata",
-		`data: {"type":"response.metadata","response":{"id":"resp_1","metadata":{"moderation":"pending"}}}`,
-		"",
 		"event: response.created",
 		`data: {"type":"response.created","response":{"id":"resp_1","metadata":{"padding":"` + largeMetadata + `"}}}`,
 		"",
@@ -509,7 +501,6 @@ func TestOpenAIStreamProcessingFailureAfterOutputIsRecorded(t *testing.T) {
 			require.NotEmpty(t, events)
 			event := events[len(events)-1]
 			require.Equal(t, "stream_failed", event.Kind)
-			require.Equal(t, "response.output_text.delta", event.FirstOutputEventType)
 			require.Equal(t, "rid-processing-failure", event.UpstreamRequestID)
 			require.Contains(t, event.Message, "An error occurred while processing your request")
 		})

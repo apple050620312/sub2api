@@ -44,6 +44,9 @@ func (s *Dynamic5hPressureService) usableStatus(status Dynamic5hPressureStatus) 
 	age := s.now().UTC().Sub(status.EvaluatedAt)
 	status.Stale = status.EvaluatedAt.IsZero() || age < -5*time.Second || age > maxAge
 	status.Enabled = s.cfg.Enabled
+	cfg := s.currentPressureConfig()
+	status.PeakThreshold = cfg.PeakThreshold
+	status.NormalThreshold = cfg.NormalThreshold
 	if !status.Enabled || status.Stale {
 		status.State = Dynamic5hPressureNormal
 		status.PeakActive = false

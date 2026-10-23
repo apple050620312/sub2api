@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -70,7 +69,6 @@ var openAIAdvancedSchedulerSettingSF singleflight.Group
 
 type OpenAIAccountScheduleRequest struct {
 	GroupID                 *int64
-	PreferredOwnerUserID    int64
 	Platform                string
 	SessionHash             string
 	StickyAccountID         int64
@@ -94,14 +92,6 @@ type OpenAIAccountScheduleRequest struct {
 	// and compact_model_mapping; native remote compaction v2 leaves it false.
 	RequireCompact bool
 	ExcludedIDs    map[int64]struct{}
-}
-
-func preferredOwnerUserIDFromContext(ctx context.Context) int64 {
-	if ctx == nil {
-		return 0
-	}
-	userID, _ := ctx.Value(ctxkey.UserID).(int64)
-	return userID
 }
 
 type OpenAIAccountScheduleDecision struct {
@@ -1467,7 +1457,7 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 			filterStats.exclude("platform_mismatch")
 			continue
 		}
-		if s.service.isOpenAIAccountRequestRuntimeBlocked(ctx, account, req.RequestedModel) {
+		if s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 			filterStats.exclude("runtime_blocked")
 			continue
 		}
@@ -1503,32 +1493,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		}
 	}
 
-	if req.PreferredOwnerUserID > 0 {
-		owned, public := partitionOnboardingAccounts(filtered, req.PreferredOwnerUserID)
-		if len(owned) > 0 {
-			attempts := make([]openAIAccountLoadSelectionAttempt, 0, 2)
-			for _, pool := range [][]*Account{owned, public} {
-				if len(pool) == 0 {
-					continue
-				}
-				attempt := s.trySelectByLoadBalancePool(ctx, req, pool, loadMap, budget)
-				if attempt.result != nil || (attempt.err != nil && !attempt.noCompactCandidates) {
-					return attempt.result, attempt.candidateCount, attempt.topK, attempt.loadSkew, attempt.err
-				}
-				attempts = append(attempts, attempt)
-			}
-			for _, attempt := range attempts {
-				if attempt.err != nil {
-					continue
-				}
-				result, count, topK, skew, err := s.finishLoadBalanceSelectionFallback(ctx, req, attempt, budget, filterStats)
-				if result != nil && err == nil {
-					return result, count, topK, skew, nil
-				}
-			}
-			return nil, len(filtered), 0, 0, noAvailableOpenAISelectionError(req.RequestedModel, req.RequireCompact, filterStats.summary(""))
-		}
-	}
 	if req.SubscriptionPriority {
 		subscriptionAccounts, regularAccounts := partitionOpenAIChatGPTSubscriptionAccounts(filtered)
 		if len(subscriptionAccounts) > 0 {
@@ -1820,7 +1784,7 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 	if req.RequirePrivacySet && !account.IsPrivacySet() {
 		return false, "privacy_not_set"
 	}
-	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(ctx, account, req.RequestedModel) {
+	if s != nil && s.service != nil && s.service.isOpenAIAccountRequestRuntimeBlocked(account, req.RequestedModel) {
 		return false, "runtime_blocked"
 	}
 	if s != nil && s.service != nil && s.service.isOpenAIProxyStreamQuarantined(ctx, account) {
@@ -2383,7 +2347,6 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 			fallbackScheduler := &defaultOpenAIAccountScheduler{service: s, stats: newOpenAIAccountRuntimeStats()}
 			selection, _, err := fallbackScheduler.selectBySessionHash(ctx, OpenAIAccountScheduleRequest{
 				GroupID:                 groupID,
-				PreferredOwnerUserID:    preferredOwnerUserIDFromContext(ctx),
 				Platform:                platform,
 				SessionHash:             sessionHash,
 				StickyAccountID:         guardianParentAccountID,
@@ -2487,7 +2450,6 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 
 	return scheduler.Select(ctx, OpenAIAccountScheduleRequest{
 		GroupID:                 groupID,
-		PreferredOwnerUserID:    preferredOwnerUserIDFromContext(ctx),
 		Platform:                platform,
 		SessionHash:             sessionHash,
 		StickyAccountID:         stickyAccountID,
