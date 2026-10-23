@@ -163,7 +163,25 @@ func TestHandleOpenAITransientError_HardDisableStillBlocksWholeAccount(t *testin
 	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "upstream_disable")
 
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
-	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-sol"))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(context.Background(), account, "gpt-5.5"))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(context.Background(), account, "gpt-5.6-sol"))
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestOpenAIModelTransientBlockBypass_SkipsOnlyModelCooldown(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 5107, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	now := time.Now()
+	svc.recordOpenAIAccountModelTransientFailure(account, "gpt-5.5", now)
+	svc.recordOpenAIAccountModelTransientFailure(account, "gpt-5.5", now)
+
+	bypassCtx := WithOpenAIModelTransientBlockBypass(context.Background())
+	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(context.Background(), account, "gpt-5.5"))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(bypassCtx, account, "gpt-5.5"))
+
+	// 账号级封禁（持久化冷却仍有效）不受旁路影响。
+	until := now.Add(time.Minute)
+	account.RateLimitResetAt = &until
+	svc.BlockAccountScheduling(account, until, "rate_limited")
+	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(bypassCtx, account, "gpt-5.5"))
 }
