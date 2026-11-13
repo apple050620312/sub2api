@@ -109,7 +109,7 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		// Keep OAuth accounts in this model-level cooldown too; the production pool
 		// is predominantly OAuth and otherwise the same failing account is selected
 		// again immediately after a failover.
-		if len(canonicalModel) > 0 && (account.Type == AccountTypeAPIKey || account.IsOpenAIOAuthLike()) {
+		if s != nil && len(canonicalModel) > 0 && (account.Type == AccountTypeAPIKey || account.IsOpenAIOAuthLike()) {
 			decision := s.recordOpenAIAccountModelTransientFailure(account, canonicalModel[0], time.Now())
 			if decision.FailureStreak > 0 {
 				slog.Warn("openai_model_transient_state",
@@ -120,6 +120,18 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 					"block_scope", "account_model",
 					"capacity_shed", true,
 				)
+			}
+		}
+		// An explicit model-scoped rule overrides the default retry policy without
+		// turning a request-level overload into an account-wide health failure.
+		model := firstRequestedModel(canonicalModel)
+		if s != nil && s.rateLimitService != nil && model != "" && account.IsTempUnschedulableEnabled() {
+			ruleBody := openAICapacityShedRuleBody(responseBody)
+			matches := matchTempUnschedulableRules(account, statusCode, ruleBody)
+			if len(matches) > 0 && matches[0].rule.Scope == TempUnschedScopeModel {
+				stateCtx, cancel := openAIAccountStateContext(ctx)
+				defer cancel()
+				return s.rateLimitService.HandleTempUnschedulable(stateCtx, account, statusCode, ruleBody, model)
 			}
 		}
 		return false
